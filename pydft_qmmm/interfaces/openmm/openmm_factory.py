@@ -48,6 +48,8 @@ def openmm_interface_factory(
         nonbonded_cutoff: float | int = 14.,
         pme_gridnumber: int | tuple[int, int, int] | None = None,
         pme_alpha: float | int | None = None,
+        drude_engine: str = "openmm",
+        drude_scf_tolerance: float | int = 1e-6,
 ) -> openmm_interface.OpenMMPotential:
     r"""Build the interface to OpenMM.
 
@@ -64,6 +66,12 @@ def openmm_interface_factory(
             lattice edge in PME summation.
         pme_alpha: The Gaussian width parameter in Ewald summation
             (:math:`\mathrm{nm^{-1}}`).
+        drude_engine: The engine used to relax Drude particles.  The
+            default, "openmm", uses OpenMM's DrudeSCFIntegrator.  The
+            "native" option leaves the context on a plain Verlet
+            integrator so a pydft-qmmm plugin can drive Drude-SCF.
+        drude_scf_tolerance: The minimization tolerance for OpenMM's
+            DrudeSCFIntegrator when drude_engine is "openmm".
 
     Returns:
         The OpenMM interface.
@@ -124,7 +132,12 @@ def openmm_interface_factory(
     )
     _adjust_system(system, base_system)
     aux_system = _empty_omm_system(system)
-    base_context = _build_omm_context(base_system, omm_modeller)
+    base_context = _build_omm_context(
+        base_system,
+        omm_modeller,
+        drude_engine,
+        drude_scf_tolerance,
+    )
     aux_context = _build_omm_context(aux_system, omm_modeller)
     wrapper = openmm_interface.OpenMMPotential(
         system,
@@ -189,7 +202,10 @@ def _build_omm_modeller(
         The internal representation of the system OpenMM, integrating
         the topology and atomic positions.
     """
-    omm_pos = [openmm.Vec3(*x)*openmm.unit.angstrom for x in system.positions]
+    omm_pos = openmm.unit.Quantity(
+        [openmm.Vec3(*x) for x in system.positions],
+        openmm.unit.angstrom,
+    )
     omm_modeller = openmm.app.Modeller(omm_topology, omm_pos)
     return omm_modeller
 
@@ -209,7 +225,7 @@ def _build_omm_forcefield(
         The internal representation of the force field for OpenMM.
     """
     omm_forcefield = openmm.app.ForceField(*forcefield)
-    # modeller.addExtraParticles(forcefield)
+    omm_modeller.addExtraParticles(omm_forcefield)
     return omm_forcefield
 
 
@@ -322,6 +338,8 @@ def _adjust_system(
 def _build_omm_context(
         omm_system: openmm.System,
         omm_modeller: openmm.app.Modeller,
+        drude_engine: str = "openmm",
+        drude_scf_tolerance: float | int = 1e-6,
 ) -> openmm.Context:
     """Build the OpenMM Context object.
 
@@ -329,15 +347,26 @@ def _build_omm_context(
         omm_system: The OpenMM representation of forces, constraints,
             and particles.
         omm_modeller: The OpenMM representation of the system.
+        drude_engine: The engine used to relax Drude particles.
+        drude_scf_tolerance: The minimization tolerance for OpenMM's
+            DrudeSCFIntegrator when drude_engine is "openmm".
 
     Returns:
         The OpenMM machinery required to perform energy and force
         calculations, containing the System object and the specific
         platform to use, which is currently just the CPU platform.
     """
-    if any(isinstance(f, openmm.DrudeForce) for f in omm_system.getForces()):
-        omm_integrator = openmm.DrudeSCFIntegrator(0.001 * openmm.unit.femtosecond)
-        omm_integrator.setMinimizationErrorTolerance(1e-6)
+    drude_engine = drude_engine.lower()
+    if drude_engine not in {"openmm", "native"}:
+        raise ValueError(f"Unsupported Drude engine: {drude_engine}")
+    if (
+            drude_engine == "openmm"
+            and any(isinstance(f, openmm.DrudeForce) for f in omm_system.getForces())
+    ):
+        omm_integrator = openmm.DrudeSCFIntegrator(
+            0.001 * openmm.unit.femtosecond,
+        )
+        omm_integrator.setMinimizationErrorTolerance(drude_scf_tolerance)
     else:
         omm_integrator = openmm.VerletIntegrator(1. * openmm.unit.femtosecond)
     # We currently only support the CPU platform.

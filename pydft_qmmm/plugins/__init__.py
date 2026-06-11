@@ -8,6 +8,7 @@ __author__ = "John Pederson"
 from .atom_partition import *
 from .center import *
 from .centroid_partition import *
+from .drude import *
 from .firstatom_partition import *
 from .plumed import *
 from .rigid import *
