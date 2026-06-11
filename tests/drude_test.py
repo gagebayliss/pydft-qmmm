@@ -5,6 +5,7 @@ import openmm
 import openmm.unit
 import pytest
 
+from pydft_qmmm.plugins.drude import OpenMMDrudeForceOracle
 from pydft_qmmm.plugins.drude import DrudeData
 from pydft_qmmm.plugins.drude import DrudeSolver
 from pydft_qmmm.plugins.drude import drude_relaxation_step
@@ -82,3 +83,68 @@ def test_drude_relaxation_step_is_standalone():
     assert positions[0, 0] == 0.0
     assert info.max_force == pytest.approx(2.0)
     assert info.max_displacement == pytest.approx(1.0)
+
+
+def test_openmm_drude_force_oracle_masks_selected_source_charges():
+    omm_system = openmm.System()
+    for _ in range(3):
+        omm_system.addParticle(1.0)
+    nonbonded = openmm.NonbondedForce()
+    nonbonded.setNonbondedMethod(openmm.NonbondedForce.NoCutoff)
+    nonbonded.addParticle(
+        1.0*openmm.unit.elementary_charge,
+        1.0*openmm.unit.nanometer,
+        0.0*openmm.unit.kilojoule_per_mole,
+    )
+    for _ in range(2):
+        nonbonded.addParticle(
+            -1.0*openmm.unit.elementary_charge,
+            1.0*openmm.unit.nanometer,
+            0.0*openmm.unit.kilojoule_per_mole,
+        )
+    omm_system.addForce(nonbonded)
+    context = openmm.Context(
+        omm_system,
+        openmm.VerletIntegrator(1.0*openmm.unit.femtosecond),
+        openmm.Platform.getPlatformByName("Reference"),
+    )
+
+    class Potential:
+        base_context = context
+
+        def update_positions(self, positions):
+            context.setPositions(
+                openmm.unit.Quantity(
+                    [openmm.Vec3(*row) for row in positions],
+                    openmm.unit.angstrom,
+                ),
+            )
+
+    data = DrudeData(
+        drude_indices=np.array([1, 2]),
+        parent_indices=np.array([1, 2]),
+        charges=np.array([-1.0, -1.0]),
+        polarizabilities=np.array([1.0, 1.0]),
+        force_constants=np.array([1.0, 1.0]),
+    )
+    positions = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [5.0, 0.0, 0.0],
+            [0.0, 5.0, 0.0],
+        ],
+    )
+
+    unmasked = OpenMMDrudeForceOracle(Potential(), data)(positions)
+    masked = OpenMMDrudeForceOracle(
+        Potential(),
+        data,
+        zero_charge_atoms={0, 2},
+        masked_drude_indices={1},
+    )(positions)
+    restored = OpenMMDrudeForceOracle(Potential(), data)(positions)
+
+    assert abs(unmasked[0, 0]) > 1.0
+    assert masked[0, 0] == pytest.approx(0.0)
+    assert masked[1, 1] == pytest.approx(unmasked[1, 1])
+    assert restored == pytest.approx(unmasked)
