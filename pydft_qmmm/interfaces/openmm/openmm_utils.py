@@ -448,6 +448,20 @@ def _exclude_custom_nonbonded(
             other_atoms,
         )
 
+_exceptions_cache = {}
+
+def _get_non_zero_exceptions(force: openmm.nonbondedForce) -> list[int]:
+    global _exceptions_cache
+    if (n := force.getForceGroup()) in _exceptions_cache:
+        return _exceptions_cache[n]
+    exceptions = []
+    for i in range(force.getNumExceptions()):
+        x = force.getExceptionParameters(i)
+        if x[2]:
+            exceptions.append((i, x))
+    _exceptions_cache[n] = exceptions
+    return exceptions
+
 
 def _update_exceptions(
         force: openmm.nonbondedForce,
@@ -459,16 +473,11 @@ def _update_exceptions(
         force: The OpenMM NonbondedForce with exceptions to update.
         new_charges: The new partial charge (:math:`e`) of the atoms.
     """
-    exceptions = [
-        force.getExceptionParameters(
-            i,
-        ) for i in range(force.getNumExceptions())
-    ]
-    for i, x in enumerate(exceptions):
-        if x[2] / (elementary_charge**2):
-            q0, _, _ = force.getParticleParameters(x[0])
-            q1, _, _ = force.getParticleParameters(x[1])
-            qprod_old = q0 * q1 / (elementary_charge**2)
-            qprod_new = new_charges[x[0]] * new_charges[x[1]]
-            x[2] *= (qprod_new / qprod_old)
-            force.setExceptionParameters(i, *x)
+    for exception in _get_non_zero_exceptions(force):
+        i, x = exception
+        q0, _, _ = force.getParticleParameters(x[0])
+        q1, _, _ = force.getParticleParameters(x[1])
+        qprod_old = q0 * q1 / (elementary_charge**2)
+        qprod_new = new_charges[x[0]] * new_charges[x[1]]
+        x[2] *= (qprod_new / qprod_old)
+        force.setExceptionParameters(i, *x)

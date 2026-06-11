@@ -28,10 +28,12 @@ NEEDS_CUTOFF = ("PME", "EWALD", "CUTOFFPERIODIC", "CUTOFFNONPERIODIC")
 PERIODIC = ("PME", "EWALD", "CUTOFFPERIODIC")
 SUPPORTED_FORCES = (
     openmm.CMMotionRemover,
+    openmm.CMAPTorsionForce,
     openmm.CustomNonbondedForce,
     openmm.CustomBondForce,
     openmm.HarmonicAngleForce,
     openmm.HarmonicBondForce,
+    openmm.DrudeForce,
     openmm.NonbondedForce,
     openmm.PeriodicTorsionForce,
     openmm.RBTorsionForce,
@@ -161,9 +163,12 @@ def _build_omm_topology(
             chains[system.chains[atoms[0]]],
         )
         for j in atoms:
+            element = None
+            if system.elements[j].upper() not in {"EP", "LP"}:
+                element = openmm.app.Element.getBySymbol(system.elements[j])
             _ = omm_topology.addAtom(
                 system.names[j],
-                openmm.app.Element.getBySymbol(system.elements[j]),
+                element,
                 residue,
             )
     omm_topology.createStandardBonds()
@@ -330,7 +335,11 @@ def _build_omm_context(
         calculations, containing the System object and the specific
         platform to use, which is currently just the CPU platform.
     """
-    omm_integrator = openmm.VerletIntegrator(1. * openmm.unit.femtosecond)
+    if any(isinstance(f, openmm.DrudeForce) for f in omm_system.getForces()):
+        omm_integrator = openmm.DrudeSCFIntegrator(0.001 * openmm.unit.femtosecond)
+        omm_integrator.setMinimizationErrorTolerance(1e-6)
+    else:
+        omm_integrator = openmm.VerletIntegrator(1. * openmm.unit.femtosecond)
     # We currently only support the CPU platform.
     omm_platform = openmm.Platform.getPlatformByName("CPU")
     omm_context = openmm.Context(omm_system, omm_integrator, omm_platform)
