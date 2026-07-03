@@ -71,15 +71,25 @@ class Simulation(Loggable):
             self.calculator = hamiltonian.build_calculator(system)
         else:
             raise TypeError
+        bind = getattr(integrator, "bind", None)
+        if bind is not None:
+            bind(self.calculator)
         # Perform additional simulation setup.
         self._offset = np.zeros(system.positions.shape)
         if system.box.any():
             self.calculator.register_plugin(CalculatorWrap(), 0)
         if system.select("subsystem I"):
             self.calculator.register_plugin(CalculatorCenter(), 0)
-        if system.masses[system.masses == 0].size > 0:
+        virtual_sites = frozenset(
+            getattr(integrator, "virtual_site_indices", ()),
+        )
+        stationary_atoms = [
+            int(atom) for atom in np.where(system.masses.base == 0)[0]
+            if atom not in virtual_sites
+        ]
+        if stationary_atoms:
             query = "atom"
-            for atom in np.where(system.masses.base == 0)[0]:
+            for atom in stationary_atoms:
                 query += f" {atom}"
                 system.masses[atom] = ELEMENT_TO_MASS.get(
                     system.elements[atom],

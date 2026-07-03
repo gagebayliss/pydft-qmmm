@@ -29,6 +29,8 @@ class DrudeSCF(CalculatorPlugin):
             one iteration required for convergence, in Angstrom.
         max_iterations: Maximum fixed-point iterations.
         damping: Scalar multiplier applied to each diagonal-Newton step.
+        stagnation_ratio: Optional OpenMM-compatible force-stagnation
+            threshold.  Use 0.9 to match OpenMM trajectory behavior.
     """
 
     def __init__(
@@ -37,11 +39,13 @@ class DrudeSCF(CalculatorPlugin):
             displacement_tolerance: float = 1e-6,
             max_iterations: int = 100,
             damping: float = 1.0,
+            stagnation_ratio: float | None = None,
     ) -> None:
         self.force_tolerance = force_tolerance
         self.displacement_tolerance = displacement_tolerance
         self.max_iterations = max_iterations
         self.damping = damping
+        self.stagnation_ratio = stagnation_ratio
         self._solver: DrudeSolver | None = None
         self.last_info: DrudeSCFInfo | None = None
 
@@ -66,6 +70,7 @@ class DrudeSCF(CalculatorPlugin):
             displacement_tolerance=self.displacement_tolerance,
             max_iterations=self.max_iterations,
             damping=self.damping,
+            stagnation_ratio=self.stagnation_ratio,
         )
         return self._solver
 

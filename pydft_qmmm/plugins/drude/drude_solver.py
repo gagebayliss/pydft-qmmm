@@ -80,6 +80,9 @@ class DrudeSolver:
             one iteration required for convergence, in Angstrom.
         max_iterations: Maximum fixed-point iterations.
         damping: Scalar multiplier applied to each diagonal-Newton step.
+        stagnation_ratio: If provided, accept the current step when the sum
+            of squared Drude forces exceeds this fraction of its value in the
+            preceding iteration.  OpenMM's Drude-SCF minimizer uses 0.9.
     """
 
     def __init__(
@@ -91,6 +94,7 @@ class DrudeSolver:
             displacement_tolerance: float = 1e-6,
             max_iterations: int = 100,
             damping: float = 1.0,
+            stagnation_ratio: float | None = None,
     ) -> None:
         self.data = data
         self.force_oracle = force_oracle
@@ -98,6 +102,7 @@ class DrudeSolver:
         self.displacement_tolerance = displacement_tolerance
         self.max_iterations = max_iterations
         self.damping = damping
+        self.stagnation_ratio = stagnation_ratio
 
     def step(
             self,
@@ -136,8 +141,15 @@ class DrudeSolver:
         relaxed = np.array(positions, dtype=float, copy=True)
         final_max_force = np.inf
         final_max_displacement = np.inf
+        previous_force_squared = np.inf
         for iteration in range(1, self.max_iterations + 1):
-            stepped, step_info = self.step(relaxed)
+            forces = self.force_oracle(relaxed)
+            stepped, step_info = drude_relaxation_step(
+                self.data,
+                relaxed,
+                forces,
+                damping=self.damping,
+            )
             final_max_force = step_info.max_force
             final_max_displacement = step_info.max_displacement
             if (
@@ -150,6 +162,20 @@ class DrudeSolver:
                     final_max_displacement=final_max_displacement,
                     converged=True,
                 )
+            force_squared = float(np.sum(forces*forces))
+            if (
+                    self.stagnation_ratio is not None
+                    and iteration > 1
+                    and force_squared
+                    > self.stagnation_ratio*previous_force_squared
+            ):
+                return stepped, DrudeSCFInfo(
+                    iterations=iteration,
+                    final_max_force=final_max_force,
+                    final_max_displacement=final_max_displacement,
+                    converged=True,
+                )
+            previous_force_squared = force_squared
             relaxed = stepped
         raise RuntimeError(
             "Drude SCF did not converge after "

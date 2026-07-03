@@ -5,7 +5,6 @@ from __future__ import annotations
 __all__ = ["SETTLE"]
 
 from collections.abc import Callable
-from functools import lru_cache
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -16,6 +15,7 @@ from .settle_utils import settle_velocities
 from pydft_qmmm.integrators import IntegratorPlugin
 
 if TYPE_CHECKING:
+    from pydft_qmmm.integrators import Integrator
     from pydft_qmmm.integrators import Returns
     from pydft_qmmm import System
 
@@ -44,6 +44,14 @@ class SETTLE(IntegratorPlugin):
         self.query = "(" + query + ") and not subsystem I"
         self.oh_distance = oh_distance
         self.hh_distance = hh_distance
+        self._residue_cache: tuple[int, list[list[int]]] | None = None
+
+    def modify(self, integrator: Integrator) -> None:
+        """Register SETTLE and defer Drude post-step operations."""
+        super().modify(integrator)
+        defer_post_step = getattr(integrator, "defer_post_step", None)
+        if defer_post_step is not None:
+            defer_post_step()
 
     def constrain_velocities(self, system: System) -> NDArray[np.float64]:
         """Apply the SETTLE algorithm to system velocities.
@@ -64,33 +72,47 @@ class SETTLE(IntegratorPlugin):
         )
         return velocities
 
-    @lru_cache
     def _get_hoh_residues(
             self,
-            residues: tuple[int, ...],
-            residue_set: frozenset[tuple[int, frozenset[int]]],
-            select: Callable[[str], frozenset[int]],
+            system: System,
     ) -> list[list[int]]:
         """Get the water residues from the system.
 
         Args:
-            residues: The indices of the residue to which the atoms
-                of the system belong.
-            residue_set: The residue index and the corresponding sets of
-                atoms.
-            select: The select method of the system.
+            system: The system containing selected water residues.
 
         Returns:
             A list of list of atom indices, representing the all water
             residues in the system.
         """
+        if self._residue_cache is not None:
+            system_id, residues = self._residue_cache
+            if system_id == id(system):
+                return residues
         residue_indices = np.unique(
-            np.array(residues)[sorted(select(self.query))],
+            np.asarray(system.residues)[sorted(system.select(self.query))],
         )
-        residue_map = dict(residue_set)
-        hoh_residues = [sorted(residue_map[i]) for i in residue_indices]
-        if any([len(residue) != 3 for residue in hoh_residues]):
-            raise ValueError("Some SETTLE residues do not have 3 atoms")
+        residue_map = system.residue_map
+        drudes = frozenset(getattr(self.integrator, "drude_indices", ()))
+        virtual_sites = frozenset(
+            getattr(self.integrator, "virtual_site_indices", ()),
+        )
+        excluded = drudes | virtual_sites
+        hoh_residues = []
+        for residue_index in residue_indices:
+            atoms = [
+                atom for atom in residue_map[residue_index]
+                if atom not in excluded
+            ]
+            if len(atoms) != 3:
+                raise ValueError(
+                    "SETTLE residues must contain exactly three non-Drude, "
+                    "non-virtual-site atoms.",
+                )
+            # settle_positions expects the central, heavy oxygen first.
+            oxygen = max(atoms, key=lambda atom: system.masses[atom])
+            hoh_residues.append([oxygen] + sorted(set(atoms) - {oxygen}))
+        self._residue_cache = (id(system), hoh_residues)
         return hoh_residues
 
     def _modify_integrate(
@@ -108,11 +130,7 @@ class SETTLE(IntegratorPlugin):
         """
         def inner(system: System) -> Returns:
             positions, velocities = integrate(system)
-            residues = self._get_hoh_residues(
-                tuple(system.residues),
-                frozenset(system.residue_map.items()),
-                system.select,
-            )
+            residues = self._get_hoh_residues(system)
             if residues:
                 positions = settle_positions(
                     residues,
@@ -127,6 +145,16 @@ class SETTLE(IntegratorPlugin):
                         positions[residues, :]
                         - system.positions[residues, :]
                     ) / self.integrator.timestep
+                )
+            finalize_positions = getattr(
+                self.integrator, "finalize_positions", None,
+            )
+            if finalize_positions is not None:
+                positions, velocities = finalize_positions(
+                    positions,
+                    velocities,
+                    np.asarray(system.masses),
+                    np.asarray(system.box),
                 )
             return positions, velocities
         return inner
@@ -147,18 +175,23 @@ class SETTLE(IntegratorPlugin):
         """
         def inner(system: System) -> float:
             masses = system.masses.reshape(-1, 1)
+            accelerations = np.zeros_like(system.forces)
+            np.divide(
+                system.forces*(10**-4),
+                masses,
+                out=accelerations,
+                where=masses != 0,
+            )
             velocities = (
                 system.velocities
-                + (
-                    0.5*self.integrator.timestep
-                    * system.forces*(10**-4)/masses
-                )
+                + 0.5*self.integrator.timestep*accelerations
             )
-            residues = self._get_hoh_residues(
-                tuple(system.residues),
-                frozenset(system.residue_map.items()),
-                system.select,
+            excluded = getattr(
+                self.integrator, "kinetic_exclusion_indices", (),
             )
+            if len(excluded):
+                velocities[excluded] = 0.0
+            residues = self._get_hoh_residues(system)
             if residues:
                 velocities = settle_velocities(
                     residues,

@@ -19,6 +19,8 @@ from .hamiltonians import MMHamiltonian
 from .hamiltonians import QMHamiltonian
 from .hamiltonians import QMMMHamiltonian
 from .integrators import LangevinIntegrator
+from .integrators import DrudeLangevinIntegrator
+from .integrators import DrudeSCFIntegrator
 from .integrators import VerletIntegrator
 from .system import Atom
 from .system import System

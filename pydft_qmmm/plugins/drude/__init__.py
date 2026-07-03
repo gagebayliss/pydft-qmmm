@@ -9,6 +9,8 @@ __all__ = [
     "OpenMMDrudeForceOracle",
     "drude_relaxation_step",
     "extract_drude_data",
+    "extract_virtual_sites",
+    "VirtualSiteData",
 ]
 
 from .drude_data import DrudeData
@@ -18,3 +20,5 @@ from .drude_solver import DrudeSolver
 from .drude_solver import DrudeStepInfo
 from .drude_solver import drude_relaxation_step
 from .openmm_oracle import OpenMMDrudeForceOracle
+from .virtual_sites import VirtualSiteData
+from .virtual_sites import extract_virtual_sites
