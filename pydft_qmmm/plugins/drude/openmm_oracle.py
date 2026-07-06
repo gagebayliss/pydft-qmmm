@@ -108,3 +108,22 @@ class OpenMMDrudeForceOracle:
                 if int(atom_index) in self.masked_drude_indices:
                     forces[atom_index, :] = masked_forces[atom_index, :]
         return forces[self.data.drude_indices, :]
+
+    def source_force_contribution(
+            self,
+            positions: NDArray[np.float64],
+    ) -> NDArray[np.float64]:
+        """Return the force contribution from ``zero_charge_atoms``.
+
+        The returned full-system array is the force with the configured
+        charges present minus the force with those charges temporarily
+        zeroed.  On other particles, this is the force exerted by the selected
+        charges.  On selected particles, it is instead the force they feel
+        from the rest of the system.  OpenMM handles PME and exception terms
+        exactly, and all parameters are restored before returning.
+        """
+        self.potential.update_positions(positions)
+        forces = self._forces()
+        with self._zeroed_charges():
+            masked_forces = self._forces()
+        return forces - masked_forces

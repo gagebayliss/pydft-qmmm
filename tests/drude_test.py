@@ -184,6 +184,47 @@ def test_openmm_drude_force_oracle_masks_selected_source_charges():
     assert restored == pytest.approx(unmasked)
 
 
+def test_openmm_drude_force_oracle_reports_source_contribution():
+    omm_system = openmm.System()
+    for _ in range(2):
+        omm_system.addParticle(1.0)
+    nonbonded = openmm.NonbondedForce()
+    nonbonded.setNonbondedMethod(openmm.NonbondedForce.NoCutoff)
+    for charge in (1.0, -1.0):
+        nonbonded.addParticle(charge, 1.0, 0.0)
+    omm_system.addForce(nonbonded)
+    context = openmm.Context(
+        omm_system,
+        openmm.VerletIntegrator(1.0*openmm.unit.femtosecond),
+        openmm.Platform.getPlatformByName("Reference"),
+    )
+
+    class Potential:
+        base_context = context
+
+        def update_positions(self, positions):
+            context.setPositions(positions*openmm.unit.angstrom)
+
+    data = DrudeData(
+        drude_indices=np.array([1]),
+        parent_indices=np.array([0]),
+        charges=np.array([-1.0]),
+        polarizabilities=np.array([1.0]),
+        force_constants=np.array([1.0]),
+    )
+    positions = np.array([[0.0, 0.0, 0.0], [5.0, 0.0, 0.0]])
+    oracle = OpenMMDrudeForceOracle(
+        Potential(), data, zero_charge_atoms={0},
+    )
+
+    contribution = oracle.source_force_contribution(positions)
+    restored = OpenMMDrudeForceOracle(Potential(), data)(positions)
+
+    assert abs(contribution[0, 0]) > 1.0
+    assert contribution[0, 0] == pytest.approx(-contribution[1, 0])
+    assert abs(restored[0, 0]) > 1.0
+
+
 def test_virtual_site_positions_match_openmm():
     system = openmm.System()
     for mass in (1.0, 1.0, 0.0, 0.0):
