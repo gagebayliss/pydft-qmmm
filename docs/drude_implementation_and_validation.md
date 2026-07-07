@@ -1,6 +1,6 @@
 # Drude Support in pydft-qmmm: Implementation and Validation
 
-Last updated: 2026-07-06
+Last updated: 2026-07-03
 
 ## Scope and baseline
 
@@ -14,7 +14,6 @@ support on branch `drude-scf-openmm`. The pre-Drude baseline is release
 | `27f3bc5` | Native Drude metadata, force oracle, SCF solver, and plugin |
 | `0297e7b` | Selective source-charge masking for QM/MM coupling |
 | `798f47e` | Virtual sites, SETTLE support, Drude Langevin dynamics, and separated Drude-SCF EOM propagation |
-| `932d6ca` | Full-system force differences for directional QM/MM Drude source filtering |
 
 The implementation deliberately supports two distinct physical models:
 
@@ -111,15 +110,6 @@ For QM/MM bookkeeping it optionally supports:
   obtained under the charge mask;
 - exact restoration of original particle and exception parameters after the
   masked force evaluation.
-
-`source_force_contribution()` returns the full-system force difference with
-the configured charges present and temporarily zeroed.  On other particles
-this is the force exerted by those charges; on the selected particles it is
-the force those particles feel from the rest of the system.  Keeping that
-distinction explicit lets the QM/MM layer remove a parent-I Drude as a force
-source without deleting the environment force acting on that Drude.  The
-calculation uses the existing particle and exception masking context, so PME
-and exception terms are handled by OpenMM and all parameters are restored.
 
 This allows parent-subsystem-II Drudes to exclude mechanical subsystem-I MM
 charge contributions while retaining the unmasked environment for other
@@ -335,7 +325,6 @@ coupled relaxation.
 - standalone one-step relaxation behavior;
 - optional OpenMM-style stagnation termination;
 - selective source-charge masking and exact parameter restoration;
-- full-system masked-charge force differences and exact restoration;
 - dependent average and out-of-plane virtual sites against OpenMM;
 - local-coordinate virtual sites against OpenMM;
 - deterministic `DrudeLangevinIntegrator` position and velocity agreement
@@ -347,7 +336,7 @@ coupled relaxation.
 Final focused result:
 
 ```text
-12 passed
+11 passed
 ```
 
 ### Full pydft-qmmm regression
@@ -367,7 +356,7 @@ The qmmm-image-solver focused suite was run against the modified editable
 pydft-qmmm source:
 
 ```text
-17 passed
+14 passed
 ```
 
 ### Native MM single-point comparison
@@ -422,27 +411,6 @@ divergence. Short-time agreement, RMS behavior, matched energy evolution, and
 zero EOM-stage Drude displacement demonstrate that the two-stage SCF dynamics
 cycle is operating as intended.
 
-### Corrected QM/MM coupling validation
-
-Revision `932d6ca` was exercised by qmmm-image-solver revision `7d661ce` on
-the equilibrated 256-water SWM4-NDP configuration in
-`drude/benchmarks/swm4ndp_drude_scf_observables_and_qmmm/`.  Direct inspection
-of the built OpenMM contexts established that the QM water comprises real
-atoms 0--2, M virtual site 3, and Drude 4.  Publishing the corrected coupling
-state changed only the M-site charge from `-1.11466 e` to zero; the parent-I
-Drude remained at `-1.71636 e`.  The force decomposition found one parent-I,
-30 parent-II, and 225 parent-III Drudes.  Parent-I and parent-III relaxation
-rows agreed with the raw OpenMM rows within `0.003 kJ/mol/nm` PME evaluation
-noise, while the parent-II rows received the subsystem-I source mask.
-
-A 10-step, 0.5 fs HF/STO-3G QM/MM smoke trajectory then completed with finite
-energies and forces.  EOM-stage Drude displacement was exactly zero at every
-step; accepted final Drude updates were at most `1.97e-5 A`.  The residual
-maximum Drude forces were `0.23--1.64 kJ/mol/nm`.  The unequilibrated QM/MM
-switch heated the physical subsystem from `304.6 K` to `465.5 K` over 5 fs,
-so this run validates coupling execution and SCF/EOM separation, not physical
-ensemble observables.
-
 ## Known limitations and follow-up validation
 
 - The source-charge mask covers `NonbondedForce` particle charges and matching
@@ -452,9 +420,9 @@ ensemble observables.
   trajectories cannot be compared coordinate by coordinate after noise is
   applied. Temperature, diffusion, structural distributions, polarization,
   and energy distributions should be compared statistically.
-- The short QM/MM trajectory validates coupled electronic/Drude convergence
-  and execution only. QM/MM equilibration and longer trajectories remain
-  necessary before comparing physical observables.
+- The current trajectory benchmarks are MM-only tests of the dynamics and
+  relaxation machinery. Full production QM/MM trajectories remain necessary
+  to validate coupled electronic/Drude convergence and long-time observables.
 - The shared qmmm-image-solver state currently has one active slot. Combining
   independently stacked image-charge and Drude SCF plugins may require unified
   shared-state ownership.
@@ -2832,96 +2800,4 @@ index b21e3b2..a77b393 100644
 +    integrator.bind(Composite())
 +
 +    assert integrator.drude_indices.tolist() == [0]
-```
-
-### Revision `932d6ca`: masked-charge full-system force difference
-
-```diff
-commit 932d6ca2382b1c033c31c1a65eaa8afc1fe58f69
-Author:     Gage Daniel Bayliss <gbayliss3@atl1-1-02-011-17-1.pace.gatech.edu>
-AuthorDate: Mon Jul 6 14:47:20 2026 -0400
-Commit:     Gage Daniel Bayliss <gbayliss3@atl1-1-02-011-17-1.pace.gatech.edu>
-CommitDate: Mon Jul 6 14:47:20 2026 -0400
-
-    Expose masked charge force contributions
-
-diff --git a/pydft_qmmm/plugins/drude/openmm_oracle.py b/pydft_qmmm/plugins/drude/openmm_oracle.py
-index 90013e8..11d47f6 100644
---- a/pydft_qmmm/plugins/drude/openmm_oracle.py
-+++ b/pydft_qmmm/plugins/drude/openmm_oracle.py
-@@ -108,3 +108,22 @@ class OpenMMDrudeForceOracle:
-                 if int(atom_index) in self.masked_drude_indices:
-                     forces[atom_index, :] = masked_forces[atom_index, :]
-         return forces[self.data.drude_indices, :]
-+
-+    def source_force_contribution(
-+            self,
-+            positions: NDArray[np.float64],
-+    ) -> NDArray[np.float64]:
-+        """Return the force contribution from ``zero_charge_atoms``.
-+
-+        The returned full-system array is the force with the configured
-+        charges present minus the force with those charges temporarily
-+        zeroed.  On other particles, this is the force exerted by the selected
-+        charges.  On selected particles, it is instead the force they feel
-+        from the rest of the system.  OpenMM handles PME and exception terms
-+        exactly, and all parameters are restored before returning.
-+        """
-+        self.potential.update_positions(positions)
-+        forces = self._forces()
-+        with self._zeroed_charges():
-+            masked_forces = self._forces()
-+        return forces - masked_forces
-diff --git a/tests/drude_test.py b/tests/drude_test.py
-index a77b393..50f43e7 100644
---- a/tests/drude_test.py
-+++ b/tests/drude_test.py
-@@ -184,6 +184,47 @@ def test_openmm_drude_force_oracle_masks_selected_source_charges():
-     assert restored == pytest.approx(unmasked)
-
-
-+def test_openmm_drude_force_oracle_reports_source_contribution():
-+    omm_system = openmm.System()
-+    for _ in range(2):
-+        omm_system.addParticle(1.0)
-+    nonbonded = openmm.NonbondedForce()
-+    nonbonded.setNonbondedMethod(openmm.NonbondedForce.NoCutoff)
-+    for charge in (1.0, -1.0):
-+        nonbonded.addParticle(charge, 1.0, 0.0)
-+    omm_system.addForce(nonbonded)
-+    context = openmm.Context(
-+        omm_system,
-+        openmm.VerletIntegrator(1.0*openmm.unit.femtosecond),
-+        openmm.Platform.getPlatformByName("Reference"),
-+    )
-+
-+    class Potential:
-+        base_context = context
-+
-+        def update_positions(self, positions):
-+            context.setPositions(positions*openmm.unit.angstrom)
-+
-+    data = DrudeData(
-+        drude_indices=np.array([1]),
-+        parent_indices=np.array([0]),
-+        charges=np.array([-1.0]),
-+        polarizabilities=np.array([1.0]),
-+        force_constants=np.array([1.0]),
-+    )
-+    positions = np.array([[0.0, 0.0, 0.0], [5.0, 0.0, 0.0]])
-+    oracle = OpenMMDrudeForceOracle(
-+        Potential(), data, zero_charge_atoms={0},
-+    )
-+
-+    contribution = oracle.source_force_contribution(positions)
-+    restored = OpenMMDrudeForceOracle(Potential(), data)(positions)
-+
-+    assert abs(contribution[0, 0]) > 1.0
-+    assert contribution[0, 0] == pytest.approx(-contribution[1, 0])
-+    assert abs(restored[0, 0]) > 1.0
-+
-+
- def test_virtual_site_positions_match_openmm():
-     system = openmm.System()
-     for mass in (1.0, 1.0, 0.0, 0.0):
 ```
