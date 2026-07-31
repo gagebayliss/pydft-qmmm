@@ -96,6 +96,53 @@ class VirtualSiteData:
                 raise TypeError(f"Unsupported virtual-site type: {site.kind}")
         return result
 
+    def redistribute_forces(
+            self,
+            positions: NDArray[np.float64],
+            forces: NDArray[np.float64],
+            box: NDArray[np.float64] | None = None,
+    ) -> NDArray[np.float64]:
+        """Transfer virtual-site forces to their defining particles."""
+        result = np.array(forces, dtype=float, copy=True)
+        coordinates = self.compute_positions(positions, box)
+        for site in reversed(self.sites):
+            site_force = result[site.index].copy()
+            result[site.index] = 0.0
+            if not np.any(site_force):
+                continue
+            particles = list(site.particles)
+            if site.kind in {"two_average", "three_average"}:
+                weights = np.asarray(site.parameters[0])
+                result[particles] += weights[:, np.newaxis] * site_force
+            elif site.kind == "out_of_plane":
+                w12, w13, wcross = site.parameters
+                r0, r1, r2 = coordinates[particles]
+                v12 = r1 - r0
+                v13 = r2 - r0
+                cross_12 = np.cross(v13, site_force)
+                cross_13 = np.cross(site_force, v12)
+                result[particles[0]] += (
+                    (1.0 - w12 - w13) * site_force
+                    - wcross * (cross_12 + cross_13)
+                )
+                result[particles[1]] += w12 * site_force + wcross * cross_12
+                result[particles[2]] += w13 * site_force + wcross * cross_13
+            else:
+                epsilon = 1e-6
+                for particle in particles:
+                    jacobian = np.empty((3, 3), dtype=float)
+                    for axis in range(3):
+                        plus = coordinates.copy()
+                        minus = coordinates.copy()
+                        plus[particle, axis] += epsilon
+                        minus[particle, axis] -= epsilon
+                        jacobian[:, axis] = (
+                            self.compute_positions(plus, box)[site.index]
+                            - self.compute_positions(minus, box)[site.index]
+                        ) / (2.0 * epsilon)
+                    result[particle] += jacobian.T @ site_force
+        return result
+
 
 def _dependency_order(system: openmm.System) -> list[int]:
     """Topologically order virtual sites like OpenMM ReferenceVirtualSites."""

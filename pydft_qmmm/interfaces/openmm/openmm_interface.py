@@ -337,6 +337,27 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
         )
         self.system.positions[:] = positions
 
+    def _redistribute_auxiliary_virtual_site_forces(
+            self,
+            forces: NDArray[np.float64],
+    ) -> NDArray[np.float64]:
+        """Apply virtual-site chain rules absent from the aux Context.
+
+        The base OpenMM Context owns the virtual-site definitions and already
+        redistributes its forces.  The deliberately empty auxiliary Context
+        does not, so only auxiliary force contributions are transformed here.
+        """
+        from pydft_qmmm.plugins.drude import extract_virtual_sites
+
+        virtual_sites = extract_virtual_sites(self.base_context.getSystem())
+        if not virtual_sites.sites:
+            return forces
+        return virtual_sites.redistribute_forces(
+            np.asarray(self.system.positions),
+            forces,
+            np.asarray(self.system.box).T,
+        )
+
     def compute_energy(self) -> float:
         r"""Compute the energy of the system using OpenMM.
 
@@ -373,25 +394,37 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
             self.base_force_mask * base_state.getForces(asNumpy=True)
             / openmm.unit.kilojoule_per_mole * openmm.unit.angstrom
         )
+        forces = np.asarray(forces)
+        # OpenMM has already propagated these virtual-site forces to parent
+        # rows, even though diagnostic values can remain on the site rows.
+        # Cache them so DrudeSCFIntegrator can distinguish them from raw QM
+        # embedding forces added later by the composite calculator.
+        object.__setattr__(self, "_last_base_forces", forces.copy())
         if self.aux_energy_group:
             aux_state = openmm_utils._generate_state(
                 self.aux_context, self.aux_energy_group,
             )
-            forces += (
+            aux_forces = (
                 self.aux_energy_group_force_mask
                 * aux_state.getForces(asNumpy=True)
                 / openmm.unit.kilojoule_per_mole
                 * openmm.unit.angstrom
             )
+            forces += self._redistribute_auxiliary_virtual_site_forces(
+                np.asarray(aux_forces),
+            )
         if self.aux_forces_group:
             aux_state = openmm_utils._generate_state(
                 self.aux_context, self.aux_forces_group,
             )
-            forces += (
+            aux_forces = (
                 self.aux_forces_group_force_mask
                 * aux_state.getForces(asNumpy=True)
                 / openmm.unit.kilojoule_per_mole
                 * openmm.unit.angstrom
+            )
+            forces += self._redistribute_auxiliary_virtual_site_forces(
+                np.asarray(aux_forces),
             )
         return forces
 

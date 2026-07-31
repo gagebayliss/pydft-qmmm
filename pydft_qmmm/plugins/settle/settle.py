@@ -175,9 +175,17 @@ class SETTLE(IntegratorPlugin):
         """
         def inner(system: System) -> float:
             masses = system.masses.reshape(-1, 1)
-            accelerations = np.zeros_like(system.forces)
+            forces = np.asarray(system.forces)
+            physical_forces = getattr(self.integrator, "physical_forces", None)
+            if physical_forces is not None:
+                forces = physical_forces(
+                    np.asarray(system.positions),
+                    forces,
+                    np.asarray(system.box),
+                )
+            accelerations = np.zeros_like(forces)
             np.divide(
-                system.forces*(10**-4),
+                forces*(10**-4),
                 masses,
                 out=accelerations,
                 where=masses != 0,

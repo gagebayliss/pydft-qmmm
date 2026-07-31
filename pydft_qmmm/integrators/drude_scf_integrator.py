@@ -26,11 +26,19 @@ if TYPE_CHECKING:
 class _PropagationSystem:
     """Array-isolated system view used by a wrapped base integrator."""
 
-    def __init__(self, system: System, excluded: NDArray[np.int64]) -> None:
+    def __init__(
+            self,
+            system: System,
+            excluded: NDArray[np.int64],
+            forces: NDArray[np.float64] | None = None,
+    ) -> None:
         self._system = system
         self.positions = np.array(system.positions, copy=True)
         self.velocities = np.array(system.velocities, copy=True)
-        self.forces = np.array(system.forces, copy=True)
+        self.forces = np.array(
+            system.forces if forces is None else forces,
+            copy=True,
+        )
         self.masses = np.array(system.masses, copy=True)
         self.velocities[excluded] = 0.0
         self.forces[excluded] = 0.0
@@ -63,6 +71,7 @@ class DrudeSCFIntegrator(Integrator):
         object.__setattr__(self, "base_integrator", base_integrator)
         object.__setattr__(self, "_drude_indices", None)
         object.__setattr__(self, "_virtual_sites", None)
+        object.__setattr__(self, "_mm_potential", None)
         object.__setattr__(self, "_defer_post_step", False)
 
     @property
@@ -85,7 +94,7 @@ class DrudeSCFIntegrator(Integrator):
     def _find_openmm_system(
             self,
             calculator: Calculator,
-    ) -> tuple[openmm.System, openmm.Integrator]:
+    ) -> tuple[openmm.System, openmm.Integrator, Any]:
         """Locate an OpenMM potential in a simple or composite calculator."""
         calculators = getattr(calculator, "calculators", (calculator,))
         for component in calculators:
@@ -97,7 +106,7 @@ class DrudeSCFIntegrator(Integrator):
                     isinstance(force, openmm.DrudeForce)
                     for force in omm_system.getForces()
                 ):
-                    return omm_system, context.getIntegrator()
+                    return omm_system, context.getIntegrator(), potential
         raise TypeError(
             "DrudeSCFIntegrator requires an OpenMM Drude potential in the "
             "calculator.",
@@ -105,7 +114,9 @@ class DrudeSCFIntegrator(Integrator):
 
     def bind(self, calculator: Calculator) -> None:
         """Bind Drude and virtual-site topology from the MM calculator."""
-        omm_system, context_integrator = self._find_openmm_system(calculator)
+        omm_system, context_integrator, potential = self._find_openmm_system(
+            calculator,
+        )
         if isinstance(context_integrator, openmm.DrudeSCFIntegrator):
             raise RuntimeError(
                 "DrudeSCFIntegrator requires MMHamiltonian(..., "
@@ -115,6 +126,7 @@ class DrudeSCFIntegrator(Integrator):
         data = extract_drude_data(omm_system)
         object.__setattr__(self, "_drude_indices", data.drude_indices)
         object.__setattr__(self, "_virtual_sites", extract_virtual_sites(omm_system))
+        object.__setattr__(self, "_mm_potential", potential)
 
     def _require_bound(self) -> None:
         if self._drude_indices is None or self._virtual_sites is None:
@@ -146,11 +158,42 @@ class DrudeSCFIntegrator(Integrator):
         del masses
         return self.update_virtual_sites(positions, box), velocities
 
+    def physical_forces(
+            self,
+            positions: NDArray[np.float64],
+            forces: NDArray[np.float64],
+            box: NDArray[np.float64],
+    ) -> NDArray[np.float64]:
+        """Return forces on the independent propagated coordinates."""
+        self._require_bound()
+        indices = self.virtual_site_indices
+        base_forces = getattr(
+            self._mm_potential,
+            "_last_base_forces",
+            forces,
+        )
+        residual = np.zeros_like(forces)
+        residual[indices] = forces[indices] - base_forces[indices]
+        redistributed = self._virtual_sites.redistribute_forces(
+            positions,
+            residual,
+            box.T,
+        )
+        result = np.array(forces, copy=True)
+        result[indices] = 0.0
+        result += redistributed
+        return result
+
     @pluggable_method
     def integrate(self, system: System) -> Returns:
         """Advance physical nuclei by one step and freeze auxiliary sites."""
         excluded = self.kinetic_exclusion_indices
-        propagation_system = _PropagationSystem(system, excluded)
+        forces = self.physical_forces(
+            np.asarray(system.positions),
+            np.asarray(system.forces),
+            np.asarray(system.box),
+        )
+        propagation_system = _PropagationSystem(system, excluded, forces)
         positions, velocities = self.base_integrator.integrate(
             propagation_system,
         )
@@ -173,5 +216,10 @@ class DrudeSCFIntegrator(Integrator):
         propagation_system = _PropagationSystem(
             system,
             self.kinetic_exclusion_indices,
+            self.physical_forces(
+                np.asarray(system.positions),
+                np.asarray(system.forces),
+                np.asarray(system.box),
+            ),
         )
         return self.base_integrator.compute_kinetic_energy(propagation_system)

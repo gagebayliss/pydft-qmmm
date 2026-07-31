@@ -8,6 +8,10 @@ from pydft_qmmm.utils import numerical_gradient
 
 class TestCutoffEmbeddingSchemes:
 
+    def test_cutoff_warns_that_forces_are_nonconservative(self):
+        with pytest.warns(RuntimeWarning, match="force-asymmetric"):
+            QMMMHamiltonian("electrostatic", "cutoff", partition=None)
+
     def test_electrostatic_cutoff_electronic_gradients(
             self,
             spce_qmmm_system,

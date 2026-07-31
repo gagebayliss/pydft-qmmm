@@ -23,29 +23,33 @@ class DrudeSCF(CalculatorPlugin):
     """Relax Drude oscillators before calculator evaluations.
 
     Args:
-        force_tolerance: Maximum Drude-particle force norm required for
+        force_tolerance: RMS Cartesian Drude-force component required for
             convergence, in kJ/mol/nm.
-        displacement_tolerance: Maximum Drude-particle displacement in
-            one iteration required for convergence, in Angstrom.
+        displacement_tolerance: Optional maximum Drude-particle displacement
+            in one iteration required for convergence, in Angstrom.
         max_iterations: Maximum fixed-point iterations.
         damping: Scalar multiplier applied to each diagonal-Newton step.
-        stagnation_ratio: Optional OpenMM-compatible force-stagnation
-            threshold.  Use 0.9 to match OpenMM trajectory behavior.
+        stagnation_ratio: Force-stagnation threshold.  The default 0.9
+            matches OpenMM trajectory behavior; use ``None`` for strict
+            force convergence.
+        algorithm: Relaxation algorithm, ``"diagonal"`` or ``"cg"``.
     """
 
     def __init__(
             self,
-            force_tolerance: float = 5e-2,
-            displacement_tolerance: float = 1e-6,
-            max_iterations: int = 100,
+            force_tolerance: float = 1.0,
+            displacement_tolerance: float | None = None,
+            max_iterations: int = 50,
             damping: float = 1.0,
-            stagnation_ratio: float | None = None,
+            stagnation_ratio: float | None = 0.9,
+            algorithm: str = "diagonal",
     ) -> None:
         self.force_tolerance = force_tolerance
         self.displacement_tolerance = displacement_tolerance
         self.max_iterations = max_iterations
         self.damping = damping
         self.stagnation_ratio = stagnation_ratio
+        self.algorithm = algorithm
         self._solver: DrudeSolver | None = None
         self.last_info: DrudeSCFInfo | None = None
 
@@ -71,6 +75,7 @@ class DrudeSCF(CalculatorPlugin):
             max_iterations=self.max_iterations,
             damping=self.damping,
             stagnation_ratio=self.stagnation_ratio,
+            algorithm=self.algorithm,
         )
         return self._solver
 

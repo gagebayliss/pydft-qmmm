@@ -130,11 +130,21 @@ The update is
 drude_position += damping * drude_force / spring_constant
 ```
 
-with conversion from nm to angstrom at the pydft-qmmm boundary. Convergence
-may be based on force or step displacement. The solver also has an opt-in
-`stagnation_ratio`; `0.9` reproduces OpenMM's trajectory minimizer behavior by
-accepting a step when the sum of squared Drude forces no longer decreases by
-at least 10%. Strict behavior remains the default when this option is `None`.
+with conversion from nm to angstrom at the pydft-qmmm boundary. By default,
+convergence follows OpenMM: the Cartesian-component RMS force tolerance is
+1 kJ/mol/nm, at most 50 iterations are performed, and a `stagnation_ratio` of
+`0.9` accepts a step when the sum of squared Drude forces no longer decreases
+by at least 10%. Reaching the iteration limit returns the latest coordinates
+with `converged=False` instead of raising. Maximum-step displacement
+convergence remains available as an explicit extension but is disabled by
+default.
+
+The solver also provides optional diagonally preconditioned conjugate
+gradient. `DrudeCGState` retains the force, spring-scaled force, and search
+direction. `drude_conjugate_gradient_step()` uses a directional force probe,
+Polak--Ribiere+ updates, downhill restarts, and residual-force backtracking.
+The original diagonal update remains the default; select CG with
+`DrudeSCF(algorithm="cg")`.
 
 ### Standalone MM Drude-SCF plugin
 
@@ -410,6 +420,29 @@ The larger maximum separation at 1 ps is accumulated deterministic trajectory
 divergence. Short-time agreement, RMS behavior, matched energy evolution, and
 zero EOM-stage Drude displacement demonstrate that the two-stage SCF dynamics
 cycle is operating as intended.
+
+### Conjugate-gradient QM/MM validation
+
+The QM/MM integration optionally nests CG updates at each fixed electronic
+density. The QM field is evaluated once per electronic iteration and held
+fixed during the inner CG probes, then reevaluated after the density changes.
+
+Focused tests passed: 13 pydft-qmmm Drude tests and 19 qmmm-image-solver Drude
+tests. A coupled two-Drude quadratic is solved below `1e-12 kJ/mol/nm` in two
+CG updates. Tighter Drude convergence did not improve NVE energy conservation:
+
+| System and embedding | Relaxation | Final force range (kJ/mol/nm) | Delta total energy over 1.5 fs (kJ/mol) |
+|---|---|---:|---:|
+| 256 water, cutoff | diagonal | 0.93--2.01 | +95.051 |
+| 256 water, cutoff | CG | 0.027--0.756 | +95.048 |
+| 1024 water, cutoff | diagonal | 2.55--4.06 | -67.544 |
+| 1024 water, cutoff | CG | 0.048--0.894 | -68.319 |
+| 1024 water, mechanical | diagonal | 2.54--4.06 | -64.165 |
+| 1024 water, mechanical | CG | 0.047--0.920 | -64.963 |
+
+CG is about three times slower in the 1024-water benchmark. Incomplete
+diagonal relaxation is therefore not the source of the force--energy
+inconsistency, and CG remains opt-in.
 
 ## Known limitations and follow-up validation
 

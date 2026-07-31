@@ -33,7 +33,7 @@ SUPPORTED_FORCES = (
     openmm.CustomBondForce,
     openmm.HarmonicAngleForce,
     openmm.HarmonicBondForce,
-    openmm.DrudeForce,
+    openmm.DrudeForce, ## NEW
     openmm.NonbondedForce,
     openmm.PeriodicTorsionForce,
     openmm.RBTorsionForce,
@@ -66,6 +66,8 @@ def openmm_interface_factory(
             lattice edge in PME summation.
         pme_alpha: The Gaussian width parameter in Ewald summation
             (:math:`\mathrm{nm^{-1}}`).
+            
+        NEW:
         drude_engine: The engine used to relax Drude particles.  The
             default, "openmm", uses OpenMM's DrudeSCFIntegrator.  The
             "native" option leaves the context on a plain Verlet
