@@ -226,6 +226,25 @@ class QMMMHamiltonian(CouplingHamiltonian):
             )
             qm_interface.add_electronic_potential(pme_electrons)
         self.apply_exclusions(mm_interface, system)
+        # self.filter_virtual_atoms(qm_interface, system)
+
+    def filter_virtual_atoms(
+            self,
+            interface: QMInterface,
+            system: System,
+    ) -> None:
+        """Modify a QM interface to ignore Drude and virtual particles.
+        
+        Args:
+            interface: The QM interface representing part of the system.
+            system: The system that will be used to modify the 
+                interface.
+        """
+        qm_atoms = system.select("subsystem I")
+        element_array = np.array(system.elements)
+        virtual_indices = np.where(element_array == "Ep")  
+        true_qm_atoms = qm_atoms & ~virtual_indices
+        # qm_interface. # TODO
 
     def apply_exclusions(
             self,
