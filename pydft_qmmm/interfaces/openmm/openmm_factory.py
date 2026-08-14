@@ -36,7 +36,7 @@ SUPPORTED_FORCES = (
     openmm.NonbondedForce,
     openmm.PeriodicTorsionForce,
     openmm.RBTorsionForce,
-    openmm.DrudeForce, 
+    openmm.DrudeForce,
 )
 
 
@@ -124,7 +124,7 @@ def openmm_interface_factory(
     )
     _adjust_system(system, base_system)
     aux_system = _empty_omm_system(system)
-    base_context = _build_omm_context(base_system,omm_modeller)
+    base_context = _build_omm_context(base_system, omm_modeller)
     aux_context = _build_omm_context(aux_system, omm_modeller)
     wrapper = openmm_interface.OpenMMPotential(
         system,
