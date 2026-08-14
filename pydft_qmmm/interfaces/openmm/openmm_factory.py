@@ -189,7 +189,10 @@ def _build_omm_modeller(
         The internal representation of the system OpenMM, integrating
         the topology and atomic positions.
     """
-    omm_pos = [openmm.Vec3(*x)*openmm.unit.angstrom for x in system.positions]
+    omm_pos = openmm.unit.Quantity(
+        [openmm.Vec3(*x) for x in system.positions],
+        openmm.unit.angstrom,
+    )
     omm_modeller = openmm.app.Modeller(omm_topology, omm_pos)
     return omm_modeller
 
