@@ -5,7 +5,6 @@ from __future__ import annotations
 __author__ = "John Pederson"
 
 from .integrator import *
-from .drude_langevin_integrator import *
 from .drude_scf_integrator import *
 from .langevin_integrator import *
 from .verlet_integrator import *
