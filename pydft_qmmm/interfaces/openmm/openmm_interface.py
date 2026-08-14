@@ -324,19 +324,6 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
             whose masked forces will be included.
     """
 
-    def _relax_drude_positions(self) -> None:
-        """Relax Drude particles in the OpenMM context and sync positions."""
-        integrator = self.base_context.getIntegrator()
-        if not isinstance(integrator, openmm.DrudeSCFIntegrator):
-            return
-        integrator.step(1)
-        state = self.base_context.getState(getPositions=True)
-        positions = (
-            state.getPositions(asNumpy=True)
-            / openmm.unit.angstrom
-        )
-        self.system.positions[:] = positions
-
     def _redistribute_auxiliary_virtual_site_forces(
             self,
             forces: NDArray[np.float64],
@@ -364,7 +351,6 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
         Returns:
             The energy (:math:`\mathrm{kJ\;mol^{-1}}`) of the system.
         """
-        self._relax_drude_positions()
         base_state = openmm_utils._generate_state(self.base_context)
         energy = (
             base_state.getPotentialEnergy()
@@ -388,7 +374,6 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
             (:math:`\mathrm{kJ\;mol^{-1}\;\mathring{A}^{-1}}`) acting
             on atoms in the system.
         """
-        self._relax_drude_positions()
         base_state = openmm_utils._generate_state(self.base_context)
         forces = (
             self.base_force_mask * base_state.getForces(asNumpy=True)
@@ -435,7 +420,6 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
             The components of the energy (:math:`\mathrm{kJ\;mol^{-1}}`)
             of the system.
         """
-        self._relax_drude_positions()
         components = {}
         for force in range(self.base_context.getSystem().getNumForces()):
             key = type(
