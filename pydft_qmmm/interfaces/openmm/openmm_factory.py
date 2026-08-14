@@ -33,10 +33,10 @@ SUPPORTED_FORCES = (
     openmm.CustomBondForce,
     openmm.HarmonicAngleForce,
     openmm.HarmonicBondForce,
-    openmm.DrudeForce, ## NEW
     openmm.NonbondedForce,
     openmm.PeriodicTorsionForce,
     openmm.RBTorsionForce,
+    openmm.DrudeForce, 
 )
 
 
@@ -48,8 +48,6 @@ def openmm_interface_factory(
         nonbonded_cutoff: float | int = 14.,
         pme_gridnumber: int | tuple[int, int, int] | None = None,
         pme_alpha: float | int | None = None,
-        drude_engine: str = "openmm",
-        drude_scf_tolerance: float | int = 1e-6,
 ) -> openmm_interface.OpenMMPotential:
     r"""Build the interface to OpenMM.
 
@@ -67,14 +65,6 @@ def openmm_interface_factory(
         pme_alpha: The Gaussian width parameter in Ewald summation
             (:math:`\mathrm{nm^{-1}}`).
             
-        NEW:
-        drude_engine: The engine used to relax Drude particles.  The
-            default, "openmm", uses OpenMM's DrudeSCFIntegrator.  The
-            "native" option leaves the context on a plain Verlet
-            integrator so a pydft-qmmm plugin can drive Drude-SCF.
-        drude_scf_tolerance: The minimization tolerance for OpenMM's
-            DrudeSCFIntegrator when drude_engine is "openmm".
-
     Returns:
         The OpenMM interface.
     """
@@ -137,8 +127,6 @@ def openmm_interface_factory(
     base_context = _build_omm_context(
         base_system,
         omm_modeller,
-        drude_engine,
-        drude_scf_tolerance,
     )
     aux_context = _build_omm_context(aux_system, omm_modeller)
     wrapper = openmm_interface.OpenMMPotential(
@@ -340,8 +328,6 @@ def _adjust_system(
 def _build_omm_context(
         omm_system: openmm.System,
         omm_modeller: openmm.app.Modeller,
-        drude_engine: str = "openmm",
-        drude_scf_tolerance: float | int = 1e-6,
 ) -> openmm.Context:
     """Build the OpenMM Context object.
 
@@ -358,19 +344,7 @@ def _build_omm_context(
         calculations, containing the System object and the specific
         platform to use, which is currently just the CPU platform.
     """
-    drude_engine = drude_engine.lower()
-    if drude_engine not in {"openmm", "native"}:
-        raise ValueError(f"Unsupported Drude engine: {drude_engine}")
-    if (
-            drude_engine == "openmm"
-            and any(isinstance(f, openmm.DrudeForce) for f in omm_system.getForces())
-    ):
-        omm_integrator = openmm.DrudeSCFIntegrator(
-            0.001 * openmm.unit.femtosecond,
-        )
-        omm_integrator.setMinimizationErrorTolerance(drude_scf_tolerance)
-    else:
-        omm_integrator = openmm.VerletIntegrator(1. * openmm.unit.femtosecond)
+    omm_integrator = openmm.VerletIntegrator(1. * openmm.unit.femtosecond)
     # We currently only support the CPU platform.
     omm_platform = openmm.Platform.getPlatformByName("CPU")
     omm_context = openmm.Context(omm_system, omm_integrator, omm_platform)
