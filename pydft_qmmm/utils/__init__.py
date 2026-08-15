@@ -4,6 +4,7 @@ from __future__ import annotations
 
 __author__ = "Jesse McDaniel, John Pederson"
 
+from .virtual_sites import *
 from .constants import *
 from .descriptor import *
 from .exceptions import *

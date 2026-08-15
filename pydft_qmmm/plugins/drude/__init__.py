@@ -11,8 +11,6 @@ __all__ = [
     "drude_relaxation_step",
     "drude_conjugate_gradient_step",
     "extract_drude_data",
-    "extract_virtual_sites",
-    "VirtualSiteData",
 ]
 
 from .drude_data import DrudeData
@@ -24,5 +22,3 @@ from .drude_solver import drude_conjugate_gradient_step
 from .drude_solver import drude_relaxation_step
 from .drude_solver import DrudeCGState
 from .openmm_oracle import OpenMMDrudeForceOracle
-from .virtual_sites import VirtualSiteData
-from .virtual_sites import extract_virtual_sites
