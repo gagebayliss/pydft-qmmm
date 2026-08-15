@@ -334,7 +334,7 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
         redistributes its forces.  The deliberately empty auxiliary Context
         does not, so only auxiliary force contributions are transformed here.
         """
-        from pydft_qmmm.utils import extract_virtual_sites
+        from pydft_qmmm.system import extract_virtual_sites
 
         virtual_sites = extract_virtual_sites(self.base_context.getSystem())
         if not virtual_sites.sites:
