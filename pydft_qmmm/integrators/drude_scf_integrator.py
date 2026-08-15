@@ -10,8 +10,8 @@ from numpy.typing import NDArray
 import openmm
 
 from pydft_qmmm.plugins.drude.drude_data import extract_drude_data
-from pydft_qmmm.plugins.drude.virtual_sites import VirtualSiteData
-from pydft_qmmm.plugins.drude.virtual_sites import extract_virtual_sites
+from pydft_qmmm.utils.virtual_sites import VirtualSiteData
+from pydft_qmmm.utils.virtual_sites import extract_virtual_sites
 from pydft_qmmm.utils import pluggable_method
 
 from .integrator import Integrator

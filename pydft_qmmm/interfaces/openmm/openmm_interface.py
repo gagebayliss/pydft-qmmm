@@ -334,7 +334,7 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
         redistributes its forces.  The deliberately empty auxiliary Context
         does not, so only auxiliary force contributions are transformed here.
         """
-        from pydft_qmmm.plugins.drude import extract_virtual_sites
+        from pydft_qmmm.utils import extract_virtual_sites
 
         virtual_sites = extract_virtual_sites(self.base_context.getSystem())
         if not virtual_sites.sites:
@@ -389,6 +389,12 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
             aux_state = openmm_utils._generate_state(
                 self.aux_context, self.aux_energy_group,
             )
+            # forces += (
+            #     self.aux_energy_group_force_mask
+            #     * aux_state.getForces(asNumpy=True)
+            #     / openmm.unit.kilojoule_per_mole
+            #     * openmm.unit.angstrom
+            # )
             aux_forces = (
                 self.aux_energy_group_force_mask
                 * aux_state.getForces(asNumpy=True)
@@ -402,6 +408,12 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
             aux_state = openmm_utils._generate_state(
                 self.aux_context, self.aux_forces_group,
             )
+            # forces += (
+            #     self.aux_forces_group_force_mask
+            #     * aux_state.getForces(asNumpy=True)
+            #     / openmm.unit.kilojoule_per_mole
+            #     * openmm.unit.angstrom
+            # )
             aux_forces = (
                 self.aux_forces_group_force_mask
                 * aux_state.getForces(asNumpy=True)
