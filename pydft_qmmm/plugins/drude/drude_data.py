@@ -35,7 +35,7 @@ class DrudeData:
         return len(self.drude_indices)
 
 
-def extract_drude_data(omm_system: openmm.System) -> DrudeData:
+def extract_drude_data(omm_system: openmm.System) -> DrudeData | None:
     """Extract Drude oscillator metadata from an OpenMM system.
 
     Args:
@@ -49,7 +49,9 @@ def extract_drude_data(omm_system: openmm.System) -> DrudeData:
         if isinstance(force, openmm.DrudeForce)
     ]
     if not drude_forces:
-        raise ValueError("The OpenMM system does not contain a DrudeForce.")
+        return None
+    # if not drude_forces:
+    #     raise ValueError("The OpenMM system does not contain a DrudeForce.")
     if len(drude_forces) > 1:
         raise ValueError("Expected one DrudeForce in the OpenMM system.")
     drude_force = drude_forces[0]

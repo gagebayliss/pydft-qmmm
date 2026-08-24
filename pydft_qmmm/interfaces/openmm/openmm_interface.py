@@ -251,6 +251,7 @@ class OpenMMInterface(MMInterface):
         omm_pos = [openmm.Vec3(*x)*openmm.unit.angstrom for x in positions]
         self.base_context.setPositions(omm_pos)
         self.aux_context.setPositions(omm_pos)
+        self.base_context.computeVirtualSites()
 
     def update_box(self, box: NDArray[np.float64]) -> None:
         r"""Set the lattice vectors used by OpenMM.

@@ -304,9 +304,7 @@ class DrudeSolver:
                     stepped,
                     step_info,
                 )
-            # Match OpenMM's default acceptance policy: test the RMS over all
-            # Cartesian Drude-force components.  Displacement convergence is
-            # retained only as an explicitly requested extension.
+
             if (
                     final_rms_force <= self.force_tolerance
                     or (
@@ -338,8 +336,8 @@ class DrudeSolver:
                 )
             previous_force_squared = force_squared
             relaxed = stepped
-        # OpenMM does not raise when its iteration limit is reached.  Return
-        # the latest positions while preserving the unconverged diagnostic.
+
+        raise RuntimeError("Maxiter Exceeded")
         return stepped, DrudeSCFInfo(
             iterations=self.max_iterations,
             final_max_force=final_max_force,
