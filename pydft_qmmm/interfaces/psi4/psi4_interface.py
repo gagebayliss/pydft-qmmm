@@ -127,7 +127,11 @@ class Psi4Interface(QMInterface):
             net charge, and net spin of atoms in the QM subsystem.
         """
         geometrystring = """\n"""
-        atoms = sorted(self.system.select("subsystem I"))
+        # make sure Drudes/virtual particles do not enter molecule.
+        # would need to change this if we needed QM virtual atoms 
+        # for some reason.
+        atoms = self._filtered_qm_atoms()
+        
         for atom in atoms:
             geometrystring = (
                 geometrystring
@@ -175,6 +179,17 @@ class Psi4Interface(QMInterface):
         """
         psi4.set_options(kwargs)
 
+    def _filtered_qm_atoms(self) -> NDArray[int]:
+        """Filter Drude and Virtual atoms out of indices.
+        
+        Returns:
+            The indices of subsystem I atoms, without virtual/Drude particles.
+        """
+        subsystem_I = sorted(self.system.select("subsystem I"))
+        element_array = np.array(self.system.elements)
+        real_indices = np.where(element_array != "Ep")  
+        atoms = np.intersect1d(subsystem_I,real_indices)
+        return atoms
 
 class Psi4Potential(Psi4Interface, AtomicPotential):
     """A potential wrapping Psi4 functionality.
@@ -220,7 +235,7 @@ class Psi4Potential(Psi4Interface, AtomicPotential):
         )
         forces = forces.np * -KJMOL_PER_EH * BOHR_PER_ANGSTROM
         forces_temp = np.zeros(self.system.positions.shape)
-        qm_indices = sorted(self.system.select("subsystem I"))
+        qm_indices = self._filtered_qm_atoms()
         forces_temp[qm_indices, :] = forces
         if self._generate_external_potential() is not None:
             embed_indices = sorted(self.system.select("subsystem II"))

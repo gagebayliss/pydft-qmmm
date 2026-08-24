@@ -227,6 +227,7 @@ class QMMMHamiltonian(CouplingHamiltonian):
             qm_interface.add_electronic_potential(pme_electrons)
         self.apply_exclusions(mm_interface, system)
 
+
     def apply_exclusions(
             self,
             interface: MMInterface,
