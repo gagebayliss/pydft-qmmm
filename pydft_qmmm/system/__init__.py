@@ -7,4 +7,3 @@ __author__ = "John Pederson"
 from .atom import *
 from .system import *
 from .variable import *
-from virtual_sites import *
