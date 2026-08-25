@@ -26,6 +26,16 @@ from .selection_utils import interpret
 from .selection_utils import FAST_KEYWORDS
 from .selection_utils import SLOW_KEYWORDS
 from .file_manager import load_system
+from .virtual_sites import VirtualSite
+
+import openmm #TODO: only import what is needed
+# TODO: fix this... really, shouldn't need all this, breaks encapsulation
+from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_topology
+from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_modeller
+from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_forcefield
+from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_system
+from .virtual_sites import extract_virtual_sites
+
 from pydft_qmmm.utils import system_cache
 
 if TYPE_CHECKING:
@@ -99,6 +109,20 @@ class System(Sequence[_SystemAtom]):
     box: ObservedArray[Any, array_float] = field(
         default_factory=lambda: ObservedArray(np.empty((0, 3), float)),
     )
+    virtual_site_indices: ObservedArray[Any, array_int] = field(
+        default_factory=lambda: ObservedArray(np.empty(0, int)),
+    )
+    virtual_types: ObservedArray[Any, array_str] = field(
+        default_factory=lambda: ObservedArray(np.empty(0, str)),
+    )
+    virtual_parents: ObservedArray[Any, array_int] = field(
+        default_factory=lambda: ObservedArray(np.empty((0,3), int)),
+    )
+    virtual_parent_weights: ObservedArray[Any, array_float] = field(
+        default_factory=lambda: ObservedArray(np.empty((0,3), float)),
+    )
+
+
 
     def __init__(
             self,
@@ -111,6 +135,7 @@ class System(Sequence[_SystemAtom]):
         self._box: ObservedArray[Any, array_float] = ObservedArray(box)
         # Delete residue_map cached property if residues changes.
         self.residues.register_notifier(_del_attr(self, "residue_map"))
+
 
     def __len__(self) -> int:
         """Get the number of atoms in the system.
@@ -171,11 +196,14 @@ class System(Sequence[_SystemAtom]):
         """
         yield from self._system_atoms[::-1]
 
-    def _setup(self, atoms: list[Atom]) -> None:
+    def _setup(self, 
+        atoms: list[Atom],
+        ) -> None:
         """Create an internal representation of the atoms of the system.
 
         Args:
             atoms: A list of atoms in the system.
+            virtual_sites: A list of virtual sites in the system.
         """
         # Populate ObservedArray objects.
         for name in getattr(self, "__dataclass_fields__"):
@@ -212,6 +240,7 @@ class System(Sequence[_SystemAtom]):
         self._atoms = atoms
         self._system_atoms = system_atoms
 
+
     def index(self, atom: Any, start: int = 0, stop: int = -1) -> int:
         """Find the first index where the atom object is found.
 
@@ -243,17 +272,74 @@ class System(Sequence[_SystemAtom]):
     @staticmethod
     def load(*args: str) -> System:
         """Load a system from PDB files.
+        Optionally, add forcefield XML files to add virtual sites.
 
         Args:
             args: The PDB file or list of PDB files with position,
                 element, name, residue, residue, name, and lattice
-                vector data.
+                vector data; the XML file or files with
+                virtual site data.
 
         Returns:
             The system generated from the data in the PDB files.
         """
-        atoms, box = load_system(*args)
-        return System(atoms, box)
+        pdb_filenames = [f for f in args if f.endswith('.pdb')]
+        atoms, box = load_system(pdb_filenames)
+        system =  System(atoms, box)
+
+        xml_filenames = [f for f in args if f.endswith('.xml')]
+        if len(xml_filenames) > 0:
+            System._load_virtual_sites(system,xml_filenames)
+            
+        return system 
+
+    def _load_virtual_sites(
+            self, 
+            system: System,
+            forcefield: list[str] | str,
+        ) -> None:
+        """Load virtual sites from XML force field files.
+
+        Args
+        """
+        if isinstance(forcefield, str):
+            forcefield = [forcefield]
+        omm_box = [openmm.Vec3(*x)*openmm.unit.angstrom for x in system.box.T]
+        if not all(x := [fh.endswith(".xml") for fh in forcefield]):
+            raise ValueError("...")
+
+        omm_topology = _build_omm_topology(system, forcefield)
+        if np.any(system.box):
+            omm_topology.setPeriodicBoxVectors(omm_box)
+        omm_modeller = _build_omm_modeller(system, omm_topology)
+        omm_forcefield = _build_omm_forcefield(forcefield, omm_modeller)
+        omm_system = _build_omm_system(omm_forcefield, omm_modeller)
+
+        virtual_sites = extract_virtual_sites(omm_system) # TODO
+        # Populate ObservedArray objects.
+        virtual_field_names = [
+            "virtual_site_indices",
+            "virtual_types",
+            "virtual_parents",
+            "virtual_parent_weights",
+        ]
+        for name in virtual_field_names:
+            temp = getattr(self, name)
+            for site in virtual_sites:
+                site_value = getattr(
+                    site,
+                    (
+                        "index" if name == "virtual_site_indices"
+                        else "site_type" if name == "virtual_types" 
+                        else "parents" if name == "virtual_parents"
+                        else "parent_weights" if name == "virtual_parent_weights"
+                        else name
+                    ),
+                )
+                temp = np.concatenate((temp, np.array([site_value])))
+            setattr(self, "_" + name, ObservedArray(temp))
+        self._virtual_sites = virtual_sites
+
 
     def select(self, query: str) -> frozenset[int]:
         """Convert a VMD-like selection query into a set of atom indices.

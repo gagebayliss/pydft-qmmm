@@ -102,6 +102,19 @@ def wrap_positions(
         new_positions[atoms] = temp.reshape((len(atoms), 3))
     return new_positions
 
+def minimum_image_displacement(
+        displacements: NDArray[np.float64],
+        box: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    print("minimum_image_displacement")
+    print("box")
+    print(box)
+    box_lengths = box
+    new_displacements -= box_lengths * np.floor(
+        displacements / box_lengths + 0.5
+    )
+    return new_displacements
+
 
 def center_positions(
         positions: NDArray[np.float64],
