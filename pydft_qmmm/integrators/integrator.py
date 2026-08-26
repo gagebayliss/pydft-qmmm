@@ -122,7 +122,7 @@ class Integrator(ABC):
         return self._plugins
 
 
-class IntegratorPlugin:
+class IntegratorPlugin(ABC):
     """The abstract base class for modifying integrator routines.
     """
 

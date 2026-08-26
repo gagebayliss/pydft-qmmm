@@ -16,6 +16,7 @@ from pydft_qmmm.integrators import IntegratorPlugin
 from pydft_qmmm.plugins import CalculatorCenter
 from pydft_qmmm.plugins import CalculatorWrap
 from pydft_qmmm.plugins import Stationary
+from pydft_qmmm.plugins import Virtual
 from pydft_qmmm.plugins import Plugin
 
 if TYPE_CHECKING:
@@ -71,21 +72,14 @@ class Simulation(Loggable):
             self.calculator = hamiltonian.build_calculator(system)
         else:
             raise TypeError
-        bind = getattr(integrator, "bind", None)
-        if bind is not None:
-            bind(self.calculator)
         # Perform additional simulation setup.
         self._offset = np.zeros(system.positions.shape)
         if system.box.any():
             self.calculator.register_plugin(CalculatorWrap(), 0)
         if system.select("subsystem I"):
             self.calculator.register_plugin(CalculatorCenter(), 0)
-        virtual_sites = frozenset(
-            getattr(integrator, "virtual_site_indices", ()),
-        )
         stationary_atoms = [
             int(atom) for atom in np.where(system.masses.base == 0)[0]
-            if atom not in virtual_sites
         ]
         if stationary_atoms:
             query = "atom"
@@ -96,6 +90,11 @@ class Simulation(Loggable):
                     0.1,
                 )
             integrator.register_plugin(Stationary(query), 0)
+        # propagates virtual sites
+        # needs to be before Stationary, virtuals have 0 mass
+        # but we still want them to move
+        integrator.register_plugin(Virtual(),0) 
+
         self.system = system
         self.integrator = integrator
         # Apply plugins.

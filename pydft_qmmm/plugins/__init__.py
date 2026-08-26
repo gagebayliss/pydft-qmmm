@@ -13,6 +13,7 @@ from .firstatom_partition import *
 from .plumed import *
 from .rigid import *
 from .settle import *
+from .virtual import *
 from .wrap import *
 
 from .plugin_manager import get_plugins

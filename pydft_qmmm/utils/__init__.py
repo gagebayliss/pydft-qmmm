@@ -9,5 +9,6 @@ from .descriptor import *
 from .exceptions import *
 from .lattice import *
 from .logging import *
+from .virtual_sites import *
 
 from .misc import *

@@ -277,8 +277,8 @@ class System(Sequence[_SystemAtom]):
         Args:
             args: The PDB file or list of PDB files with position,
                 element, name, residue, residue, name, and lattice
-                vector data; the XML file or files with
-                virtual site data.
+                vector data; optionally also the XML file or files 
+                specifying a forcefield with virtual sites.
 
         Returns:
             The system generated from the data in the PDB files.
@@ -288,34 +288,37 @@ class System(Sequence[_SystemAtom]):
         system =  System(atoms, box)
 
         xml_filenames = [f for f in args if f.endswith('.xml')]
-        if len(xml_filenames) > 0:
-            System._load_virtual_sites(system,xml_filenames)
+        if len(xml_filenames):
+            system._load_virtual_sites(xml_filenames)
             
         return system 
 
     def _load_virtual_sites(
             self, 
-            system: System,
             forcefield: list[str] | str,
         ) -> None:
         """Load virtual sites from XML force field files.
 
-        Args
+        Args:
+           forcefield: The XML file or list of XML files used to
+           set up the forcefield, with information about the 
+           virtual sites.
         """
         if isinstance(forcefield, str):
             forcefield = [forcefield]
-        omm_box = [openmm.Vec3(*x)*openmm.unit.angstrom for x in system.box.T]
+        omm_box = [openmm.Vec3(*x)*openmm.unit.angstrom for x in self.box.T]
         if not all(x := [fh.endswith(".xml") for fh in forcefield]):
             raise ValueError("...")
 
-        omm_topology = _build_omm_topology(system, forcefield)
-        if np.any(system.box):
+        omm_topology = _build_omm_topology(self, forcefield)
+        if np.any(self.box):
             omm_topology.setPeriodicBoxVectors(omm_box)
-        omm_modeller = _build_omm_modeller(system, omm_topology)
+        omm_modeller = _build_omm_modeller(self, omm_topology)
         omm_forcefield = _build_omm_forcefield(forcefield, omm_modeller)
         omm_system = _build_omm_system(omm_forcefield, omm_modeller)
 
-        virtual_sites = extract_virtual_sites(omm_system) # TODO
+        virtual_sites = extract_virtual_sites(omm_system) 
+
         # Populate ObservedArray objects.
         virtual_field_names = [
             "virtual_site_indices",
@@ -339,6 +342,8 @@ class System(Sequence[_SystemAtom]):
                 temp = np.concatenate((temp, np.array([site_value])))
             setattr(self, "_" + name, ObservedArray(temp))
         self._virtual_sites = virtual_sites
+
+        del omm_system
 
 
     def select(self, query: str) -> frozenset[int]:
