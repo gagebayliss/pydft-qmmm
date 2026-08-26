@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 __all__ = [
-    "VirtualSiteData", 
     "VirtualSite",
-    "_SystemVirtualSite",
     "extract_virtual_sites",
+    "compute_positions",
+    "distribute_forces",
 ]
 
 from dataclasses import dataclass
@@ -17,13 +17,13 @@ from numpy.typing import NDArray
 import openmm
 import openmm.unit
 
-from pydft_qmmm.utils import wrap_positions
-from pydft_qmmm.utils import minimum_image_displacement
-from pydft_qmmm.system import System
+from pydft_qmmm.utils.misc import wrap_positions
+from pydft_qmmm.utils.misc import minimum_image_displacement
 
 if TYPE_CHECKING:
     from typing import Any
     from numpy.typing import NDArray
+    from pydft_qmmm.system import System
     from .variable import ObservedArray
     from .variable import array_float
     from .variable import array_int
@@ -194,14 +194,6 @@ def _dependency_order(system: openmm.System) -> list[int]:
         if len(remaining) == previous_size:
             raise ValueError("Virtual site definitions are circular.")
     return order
-
-
-def _vec3(value: Any, unit: Any | None = None) -> tuple[float, float, float]:
-    """Convert an OpenMM Vec3 or Quantity<Vec3> to a float tuple."""
-    if unit is not None:
-        value = value.value_in_unit(unit)
-    return tuple(float(value[i]) for i in range(3))
-
 
 def extract_virtual_sites(system: openmm.System) -> tuple[VirtualSite]:
     """Extract supported virtual sites from an OpenMM System."""

@@ -26,7 +26,6 @@ from .selection_utils import interpret
 from .selection_utils import FAST_KEYWORDS
 from .selection_utils import SLOW_KEYWORDS
 from .file_manager import load_system
-from .virtual_sites import VirtualSite
 
 import openmm #TODO: only import what is needed
 # TODO: fix this... really, shouldn't need all this, breaks encapsulation
@@ -34,7 +33,7 @@ from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_topology
 from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_modeller
 from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_forcefield
 from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_system
-from .virtual_sites import extract_virtual_sites
+from pydft_qmmm.utils import extract_virtual_sites
 
 from pydft_qmmm.utils import system_cache
 
@@ -207,7 +206,14 @@ class System(Sequence[_SystemAtom]):
         """
         # Populate ObservedArray objects.
         for name in getattr(self, "__dataclass_fields__"):
-            if name == "box":
+            ignore = [
+                "box",
+                "virtual_site_indices",
+                "virtual_types",
+                "virtual_parents",
+                "virtual_parent_weights",
+                ]
+            if name in ignore:
                 continue
             temp = getattr(self, name)
             for atom in atoms:
@@ -225,7 +231,14 @@ class System(Sequence[_SystemAtom]):
         for i, atom in enumerate(atoms):
             kwargs: dict[str, Any] = dict()
             for name in getattr(self, "__dataclass_fields__"):
-                if name == "box":
+                ignore = [
+                    "box",
+                    "virtual_site_indices",
+                    "virtual_types",
+                    "virtual_parents",
+                    "virtual_parent_weights",
+                    ]
+                if name in ignore:
                     continue
                 data = getattr(self, name)
                 name = (
@@ -284,7 +297,7 @@ class System(Sequence[_SystemAtom]):
             The system generated from the data in the PDB files.
         """
         pdb_filenames = [f for f in args if f.endswith('.pdb')]
-        atoms, box = load_system(pdb_filenames)
+        atoms, box = load_system(*pdb_filenames)
         system =  System(atoms, box)
 
         xml_filenames = [f for f in args if f.endswith('.xml')]
@@ -339,7 +352,20 @@ class System(Sequence[_SystemAtom]):
                         else name
                     ),
                 )
-                temp = np.concatenate((temp, np.array([site_value])))
+                try:
+                    is_sequence = isinstance(site_value,Sequence)
+                    if is_sequence:
+                        temp = np.concatenate((temp, np.array(site_value)))
+                    else:
+                        temp = np.concatenate((temp, np.array([site_value])))
+                except:
+                    print("is_sequence")
+                    print(is_sequence)
+                    print("temp")
+                    print(type(temp))
+                    print(temp)
+                    print("site_value")
+                    print(site_value)
             setattr(self, "_" + name, ObservedArray(temp))
         self._virtual_sites = virtual_sites
 
