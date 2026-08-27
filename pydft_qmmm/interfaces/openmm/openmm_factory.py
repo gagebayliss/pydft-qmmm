@@ -250,10 +250,27 @@ def _empty_omm_system(system: System, add_virtual_sites = True) -> openmm.System
     omm_system = openmm.System()
     for i in range(len(system)):
         omm_system.addParticle(0.)
-    # TODO: add virtual site definitions to aux_context
-    if add_virtual_sites and len(system.virtual_site_indices):
-        pass
+    if not (add_virtual_sites and len(system.virtual_site_indices)):
+        return omm_system
 
+    for i, site_index in enumerate(system.virtual_site_indices):
+        if system.virtual_type[i] == "two_average":
+            p1 = system.virtual_parents[i][0]
+            p2 = system.virtual_parents[i][1]
+            w1 = system.virtual_parent_weights[i][0]
+            w2 = system.virtual_parent_weights[i][1]
+            site = openmm.TwoParticleAverageSite(p1,p2,w1,w2)
+        elif system.virtual_type[i] == "three_average":
+            p1 = system.virtual_parents[i][0]
+            p2 = system.virtual_parents[i][1]
+            p3 = system.virtual_parents[i][2]
+            w1 = system.virtual_parent_weights[i][0]
+            w2 = system.virtual_parent_weights[i][1]
+            w3 = system.virtual_parent_weights[i][2]
+            site = openmm.ThreeParticleAverageSite(p1,p2,p3,w1,w2,w3)
+        else:
+            raise ValueError("...")
+        omm_system.setVirtualSite(site_index,site)
     return omm_system
 
 

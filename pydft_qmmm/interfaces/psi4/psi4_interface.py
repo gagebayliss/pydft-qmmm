@@ -18,6 +18,7 @@ from pydft_qmmm.potentials import AtomicPotential
 from pydft_qmmm.utils import BOHR_PER_ANGSTROM
 from pydft_qmmm.utils import KJMOL_PER_EH
 from pydft_qmmm.utils import system_cache
+from pydft_qmmm.utils import virtual_sites
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -244,6 +245,7 @@ class Psi4Potential(Psi4Interface, AtomicPotential):
                 * -KJMOL_PER_EH * BOHR_PER_ANGSTROM
             )
             forces_temp[embed_indices, :] = forces
+        forces_temp = virtual_sites.distribute_forces(self.system,forces_temp)        
         return forces_temp
 
     def compute_components(self) -> dict[str, float]:
