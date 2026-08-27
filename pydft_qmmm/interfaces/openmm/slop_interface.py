@@ -21,7 +21,6 @@ import openmm
 import openmm.unit
 
 from pydft_qmmm.utils import Subsystem
-from pydft_qmmm.utils import virtual_sites
 from pydft_qmmm.interfaces import MMInterface
 from pydft_qmmm.potentials import AtomicPotential
 
@@ -96,7 +95,6 @@ class OpenMMInterface(MMInterface):
             for j in range(3):
                 self.base_force_mask[i, j] = 0
                 self.aux_energy_group_force_mask[i, j] = 0
-                self.aux_forces_group_force_mask[i, j] = 0
 
     def add_real_elst(
             self,
@@ -253,6 +251,8 @@ class OpenMMInterface(MMInterface):
         omm_pos = [openmm.Vec3(*x)*openmm.unit.angstrom for x in positions]
         self.base_context.setPositions(omm_pos)
         self.aux_context.setPositions(omm_pos)
+        ## TEMPORARY
+        self.base_context.computeVirtualSites()
 
     def update_box(self, box: NDArray[np.float64]) -> None:
         r"""Set the lattice vectors used by OpenMM.
@@ -361,7 +361,11 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
             / openmm.unit.kilojoule_per_mole * openmm.unit.angstrom
         )
         forces = np.asarray(forces)
-        # object.__setattr__(self, "_last_base_forces", forces.copy())
+        # OpenMM has already propagated these virtual-site forces to parent
+        # rows, even though diagnostic values can remain on the site rows.
+        # Cache them so DrudeSCFIntegrator can distinguish them from raw QM
+        # embedding forces added later by the composite calculator.
+        object.__setattr__(self, "_last_base_forces", forces.copy())
         if self.aux_energy_group:
             aux_state = openmm_utils._generate_state(
                 self.aux_context, self.aux_energy_group,
@@ -378,8 +382,7 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
                 / openmm.unit.kilojoule_per_mole
                 * openmm.unit.angstrom
             )
-            forces += virtual_sites.distribute_forces(
-                self,
+            forces += self._redistribute_auxiliary_virtual_site_forces(
                 np.asarray(aux_forces),
             )
         if self.aux_forces_group:
@@ -398,8 +401,7 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
                 / openmm.unit.kilojoule_per_mole
                 * openmm.unit.angstrom
             )
-            forces += virtual_sites.distribute_forces(
-                self,
+            forces += self._redistribute_auxiliary_virtual_site_forces(
                 np.asarray(aux_forces),
             )
         return forces

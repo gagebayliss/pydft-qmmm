@@ -237,7 +237,7 @@ def _build_omm_system(
     return omm_system
 
 
-def _empty_omm_system(system: System) -> openmm.System:
+def _empty_omm_system(system: System, add_virtual_sites = True) -> openmm.System:
     """Build an empty OpenMM System object.
 
     Args:
@@ -250,6 +250,10 @@ def _empty_omm_system(system: System) -> openmm.System:
     omm_system = openmm.System()
     for i in range(len(system)):
         omm_system.addParticle(0.)
+    # TODO: add virtual site definitions to aux_context
+    if add_virtual_sites and len(system.virtual_site_indices):
+        pass
+
     return omm_system
 
 
