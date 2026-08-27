@@ -110,6 +110,7 @@ def minimum_image_displacement(
     print("box")
     print(box)
     box_lengths = box
+    new_displacements = displacements.copy()
     new_displacements -= box_lengths * np.floor(
         displacements / box_lengths + 0.5
     )

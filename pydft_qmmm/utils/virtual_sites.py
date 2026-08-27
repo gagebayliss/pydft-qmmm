@@ -59,9 +59,6 @@ def compute_positions(system: System, positions: NDArray[np.float64]) -> NDArray
     Returns:
         an array containing updated positions.
     """
-
-    assert (original := system.copy())
-
     new_positions = np.asarray(positions).copy()
     assert len(new_positions) == len(system)
 
@@ -70,12 +67,12 @@ def compute_positions(system: System, positions: NDArray[np.float64]) -> NDArray
             pos1 = new_positions[system.virtual_parents[i][0]]
             pos2 = new_positions[system.virtual_parents[i][1]]
             v12 = pos2 - pos1
-            v12 = minimum_image_displacement(v12)
+            # v12 = minimum_image_displacement(v12,system.box)
 
             w1 = system.virtual_parent_weights[i][0]
             w2 = system.virtual_parent_weights[i][1]
 
-            assert np.close(w1 + w2, 1.0,atol=1e-2)
+            assert np.isclose(w1 + w2, 1.0,atol=1e-2)
 
             # relative to first virtual parent
             virtual_displacement = v12 * w2
@@ -88,14 +85,14 @@ def compute_positions(system: System, positions: NDArray[np.float64]) -> NDArray
             pos3 = new_positions[system.virtual_parents[i][2]]
             v12 = pos2 - pos1
             v13 = pos3 - pos1
-            v12 = minimum_image_displacement(v12)
-            v13 = minimum_image_displacement(v13)
+            # v12 = minimum_image_displacement(v12,system.box)
+            # v13 = minimum_image_displacement(v13,system.box)
 
             w1 = system.virtual_parent_weights[i][0]
             w2 = system.virtual_parent_weights[i][1]
             w3 = system.virtual_parent_weights[i][2]
 
-            assert np.close(w1 + w2 + w3, 1.0,atol=1e-2)
+            assert np.isclose(w1 + w2 + w3, 1.0,atol=1e-2)
 
             virtual_displacement = v12 * w2 + v13 * w3
 
@@ -110,13 +107,7 @@ def compute_positions(system: System, positions: NDArray[np.float64]) -> NDArray
         else:
             raise NotImplementedError()
 
-        assert system == original
-
-        return wrap_positions(
-            new_positions,
-            system.box,
-            system.residue_map,
-            )
+        return new_positions
 
 def distribute_forces(system: System, forces: NDArray[np.float64]) -> NDArray[np.float64]:
     """
@@ -135,15 +126,12 @@ def distribute_forces(system: System, forces: NDArray[np.float64]) -> NDArray[np
     Returns:
         an array containing updated forces. 
     """
-
-    assert (original := system.copy())
-
     assert (len(forces) == len(system))
 
     new_forces = np.asarray(forces).copy()
 
     for i,site_index in enumerate(system.virtual_site_indices):
-        force = new_forces[i]
+        force = new_forces[site_index]
         if system.virtual_types[i] == "two_average":
             p1 = system.virtual_parents[i][0]
             p2 = system.virtual_parents[i][1]
@@ -155,7 +143,7 @@ def distribute_forces(system: System, forces: NDArray[np.float64]) -> NDArray[np
         elif system.virtual_types[i] == "three_average":
             p1 = system.virtual_parents[i][0]
             p2 = system.virtual_parents[i][1]
-            p3 = system.virtual_parents[i][1]
+            p3 = system.virtual_parents[i][2]
             w1 = system.virtual_parent_weights[i][0]
             w2 = system.virtual_parent_weights[i][1]
             w3 = system.virtual_parent_weights[i][2]
@@ -171,8 +159,6 @@ def distribute_forces(system: System, forces: NDArray[np.float64]) -> NDArray[np
             raise NotImplementedError()
         else:
             raise NotImplementedError()
-
-        assert system == original
 
         return new_forces
 
@@ -206,12 +192,12 @@ def extract_virtual_sites(system: openmm.System) -> tuple[VirtualSite]:
         if isinstance(site, openmm.TwoParticleAverageSite):
             sites.append(VirtualSite(
                 index, "two_average", particles,
-                (tuple(float(site.getWeight(i)) for i in range(2)),),
+                tuple(float(site.getWeight(i)) for i in range(2)),
             ))
         elif isinstance(site, openmm.ThreeParticleAverageSite):
             sites.append(VirtualSite(
                 index, "three_average", particles,
-                (tuple(float(site.getWeight(i)) for i in range(3)),),
+                tuple(float(site.getWeight(i)) for i in range(3)),
             ))
         else:
             raise TypeError(

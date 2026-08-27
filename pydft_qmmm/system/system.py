@@ -353,19 +353,14 @@ class System(Sequence[_SystemAtom]):
                     ),
                 )
                 try:
-                    is_sequence = isinstance(site_value,Sequence)
-                    if is_sequence:
-                        temp = np.concatenate((temp, np.array(site_value)))
-                    else:
-                        temp = np.concatenate((temp, np.array([site_value])))
+                    temp = np.concatenate((temp, np.asarray([site_value])))
                 except:
-                    print("is_sequence")
-                    print(is_sequence)
                     print("temp")
-                    print(type(temp))
                     print(temp)
                     print("site_value")
                     print(site_value)
+                    temp = np.concatenate((temp, np.asarray(site_value)))
+                    
             setattr(self, "_" + name, ObservedArray(temp))
         self._virtual_sites = virtual_sites
 
