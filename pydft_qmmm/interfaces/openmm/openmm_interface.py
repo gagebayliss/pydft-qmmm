@@ -366,41 +366,21 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
             aux_state = openmm_utils._generate_state(
                 self.aux_context, self.aux_energy_group,
             )
-            # forces += (
-            #     self.aux_energy_group_force_mask
-            #     * aux_state.getForces(asNumpy=True)
-            #     / openmm.unit.kilojoule_per_mole
-            #     * openmm.unit.angstrom
-            # )
-            aux_forces = (
+            forces += (
                 self.aux_energy_group_force_mask
                 * aux_state.getForces(asNumpy=True)
                 / openmm.unit.kilojoule_per_mole
                 * openmm.unit.angstrom
             )
-            forces += virtual_sites.distribute_forces(
-                self,
-                np.asarray(aux_forces),
-            )
         if self.aux_forces_group:
             aux_state = openmm_utils._generate_state(
                 self.aux_context, self.aux_forces_group,
             )
-            # forces += (
-            #     self.aux_forces_group_force_mask
-            #     * aux_state.getForces(asNumpy=True)
-            #     / openmm.unit.kilojoule_per_mole
-            #     * openmm.unit.angstrom
-            # )
-            aux_forces = (
+            forces += (
                 self.aux_forces_group_force_mask
                 * aux_state.getForces(asNumpy=True)
                 / openmm.unit.kilojoule_per_mole
                 * openmm.unit.angstrom
-            )
-            forces += virtual_sites.distribute_forces(
-                self,
-                np.asarray(aux_forces),
             )
         return forces
 

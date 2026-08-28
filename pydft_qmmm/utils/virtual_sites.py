@@ -107,7 +107,7 @@ def compute_positions(system: System, positions: NDArray[np.float64]) -> NDArray
         else:
             raise NotImplementedError()
 
-        return new_positions
+    return new_positions
 
 def distribute_forces(system: System, forces: NDArray[np.float64]) -> NDArray[np.float64]:
     """
@@ -160,7 +160,7 @@ def distribute_forces(system: System, forces: NDArray[np.float64]) -> NDArray[np
         else:
             raise NotImplementedError()
 
-        return new_forces
+    return new_forces
 
 
 def _dependency_order(system: openmm.System) -> list[int]:

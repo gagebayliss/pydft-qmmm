@@ -254,13 +254,13 @@ def _empty_omm_system(system: System, add_virtual_sites = True) -> openmm.System
         return omm_system
 
     for i, site_index in enumerate(system.virtual_site_indices):
-        if system.virtual_type[i] == "two_average":
+        if system.virtual_types[i] == "two_average":
             p1 = system.virtual_parents[i][0]
             p2 = system.virtual_parents[i][1]
             w1 = system.virtual_parent_weights[i][0]
             w2 = system.virtual_parent_weights[i][1]
             site = openmm.TwoParticleAverageSite(p1,p2,w1,w2)
-        elif system.virtual_type[i] == "three_average":
+        elif system.virtual_types[i] == "three_average":
             p1 = system.virtual_parents[i][0]
             p2 = system.virtual_parents[i][1]
             p3 = system.virtual_parents[i][2]

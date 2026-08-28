@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import pytest
 
+import json
 import numpy as np
 
 from pydft_qmmm import System
 from pydft_qmmm import VerletIntegrator
+from pydft_qmmm import MMHamiltonian
+from pydft_qmmm import QMHamiltonian
+from pydft_qmmm import QMMMHamiltonian
 from pydft_qmmm.utils import ELEMENT_TO_MASS
+from pydft_qmmm.utils import Subsystem
 from pydft_qmmm.plugins import Virtual
 from pydft_qmmm.plugins import Stationary
 from pydft_qmmm.plugins import SETTLE
@@ -99,3 +104,107 @@ def reference_distribute_forces(system,forces):
     f3 += f4 * 0.2051094645
     forces = np.array([f1,f2,f3,f4,f5])
     return forces
+
+def test_calculator():
+    system = System.load(
+        "tests/tip4pew_data/tip4pew_trimer.pdb",
+        "tests/tip4pew_data/tip4pew.xml"
+    )
+    with open("tests/tip4pew_data/trimer_ss_ii.json") as fh:
+        embedding_list = json.load(fh)
+    for atom in embedding_list:
+        system.subsystems[atom] = Subsystem.II
+    mm = MMHamiltonian(
+        forcefield=[
+            "tests/tip4pew_data/tip4pew.xml",
+            # "tests/tip4pew_data/tip4pew_residues.xml",
+        ],
+        # pme_gridnumber=30,
+        # pme_alpha=5.0,
+        nonbonded_method="NoCutoff",
+    )
+    qm = QMHamiltonian(
+        basis="sto-3g",
+        functional="HF",
+        charge=0,
+        multiplicity=1,
+        guess="read",
+    )
+    I_III = "none"
+    qmmm = QMMMHamiltonian(
+        "electrostatic",
+        I_III,
+        partition=None,
+    )
+    total = mm[4:] + qm[:4] + qmmm
+    calculator = total.build_calculator(system)
+    results = calculator.calculate()
+    forces = results.forces
+    print()
+    np.set_printoptions(
+        precision=4,       # digits after decimal
+        suppress=True,     # avoid scientific notation for small values
+        # linewidth=120,     # characters before wrapping
+        # threshold=1000,    # number of elements before abbreviating with ...
+    )
+    print("tip4pew")
+    print(f"I_III: {I_III}")
+    print("subsystem I")
+    print(forces[:4])
+    print("subsystem II")
+    print(forces[4:8])
+    print("subsystem III")
+    print(forces[8:])
+
+
+def test_calculator_spce():
+    system = System.load(
+        "tests/spce_data/hoh_trimer.pdb",
+        "tests/spce_data/spce.xml"
+    )
+    with open("tests/tip4pew_data/trimer_ss_ii.json") as fh:
+        embedding_list = json.load(fh)
+    for atom in embedding_list:
+        system.subsystems[atom] = Subsystem.II
+    mm = MMHamiltonian(
+        forcefield=[
+            "tests/spce_data/spce.xml",
+            # "tests/tip4pew_data/tip4pew_residues.xml",
+        ],
+        # pme_gridnumber=30,
+        # pme_alpha=5.0,
+        nonbonded_method="NoCutoff",
+    )
+    qm = QMHamiltonian(
+        basis="sto-3g",
+        functional="HF",
+        charge=0,
+        multiplicity=1,
+        guess="read",
+    )
+    # I_III = "none"
+    I_III = "mechanical"
+    qmmm = QMMMHamiltonian(
+        "electrostatic",
+        I_III,
+        partition=None,
+    )
+    total = mm[3:] + qm[:3] + qmmm
+    calculator = total.build_calculator(system)
+    results = calculator.calculate()
+    forces = results.forces
+    print()
+    np.set_printoptions(
+        precision=4,       # digits after decimal
+        suppress=True,     # avoid scientific notation for small values
+        # linewidth=120,     # characters before wrapping
+        # threshold=1000,    # number of elements before abbreviating with ...
+    )
+    print("spce")
+    print(f"I_III: {I_III}")
+    print("subsystem I")
+    print(forces[:3])
+    print("subsystem II")
+    print(forces[3:6])
+    print("subsystem III")
+    print(forces[6:])
