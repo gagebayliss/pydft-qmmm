@@ -11,5 +11,5 @@ ATOM      9  O   HOH A   3      18.284   3.886   8.202  1.00  0.00           O
 ATOM     10  H1  HOH A   3      17.649   4.569   7.991  1.00  0.00           H
 ATOM     11  H2  HOH A   3      18.817   4.261   8.903  1.00  0.00           H
 ATOM     12  M   HOH A   3      18.273   3.999   8.254  1.00  0.00          EP
-TER      14      HOH A   4
+TER      13      HOH A   4
 END

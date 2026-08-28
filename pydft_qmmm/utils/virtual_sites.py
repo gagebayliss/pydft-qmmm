@@ -126,6 +126,9 @@ def distribute_forces(system: System, forces: NDArray[np.float64]) -> NDArray[np
     Returns:
         an array containing updated forces. 
     """
+    if not len(system.virtual_site_indices):
+        return np.asarray(forces).copy()
+
     assert (len(forces) == len(system))
 
     new_forces = np.asarray(forces).copy()
