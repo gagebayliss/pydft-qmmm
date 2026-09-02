@@ -28,7 +28,7 @@ from .selection_utils import SLOW_KEYWORDS
 from .file_manager import load_system
 
 import openmm #TODO: only import what is needed
-# TODO: fix this... really, shouldn't need all this, breaks encapsulation
+# TODO: fix this... should not access hidden methods of openmm_factory
 from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_topology
 from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_modeller
 from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_forcefield
@@ -195,14 +195,11 @@ class System(Sequence[_SystemAtom]):
         """
         yield from self._system_atoms[::-1]
 
-    def _setup(self, 
-        atoms: list[Atom],
-        ) -> None:
+    def _setup(self, atoms: list[Atom]) -> None:
         """Create an internal representation of the atoms of the system.
 
         Args:
             atoms: A list of atoms in the system.
-            virtual_sites: A list of virtual sites in the system.
         """
         # Populate ObservedArray objects.
         for name in getattr(self, "__dataclass_fields__"):

@@ -115,17 +115,6 @@ class QMMMHamiltonian(CouplingHamiltonian):
     ) -> None:
         if (close_range, long_range) not in _SUPPORTED_EMBEDDING:
             raise TypeError  # Todo: Make this informative.
-        if long_range == "cutoff":
-            warn(
-                "long_range='cutoff' is force-asymmetric: subsystem III "
-                "feels the MM representation of subsystem I, while subsystem "
-                "I has no reciprocal subsystem-III force. The resulting "
-                "Hamiltonian is nonconservative and is unsuitable for NVE "
-                "energy-conservation tests; use long_range='none', "
-                "'mechanical', or 'electrostatic' instead.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
         self.force_matrix = _DEFAULT_FORCE_MATRIX.copy()
         self.partition = partition
         self.cutoff = cutoff
@@ -226,7 +215,6 @@ class QMMMHamiltonian(CouplingHamiltonian):
             )
             qm_interface.add_electronic_potential(pme_electrons)
         self.apply_exclusions(mm_interface, system)
-
 
     def apply_exclusions(
             self,

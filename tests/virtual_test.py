@@ -159,7 +159,7 @@ def test_calculator():
 
 def test_calculator_spce():
     system = System.load(
-        "tests/spce_data/hoh_trimer.pdb",
+        "tests/spce_data/hoh_123.pdb",
         "tests/spce_data/spce.xml"
     )
     mm = MMHamiltonian(
@@ -167,8 +167,6 @@ def test_calculator_spce():
             "tests/spce_data/spce.xml",
             "tests/spce_data/spce_residues.xml",
         ],
-        # pme_gridnumber=30,
-        # pme_alpha=5.0,
         nonbonded_method="NoCutoff",
     )
     qm = QMHamiltonian(
@@ -178,31 +176,32 @@ def test_calculator_spce():
         multiplicity=1,
         guess="SAD",
     )
-    I_II = "electrostatic"
+    # I_II = "electrostatic"
     # I_II = "mechanical"
-    # I_II = "none"
-    # I_III = "none"
-    I_III = "mechanical"
+    I_II = "none"
+    I_III = "none"
+    # I_III = "mechanical"
     qmmm = QMMMHamiltonian(
         I_II,
         I_III,
         partition=None,
     )
     total = mm[3:] + qm[:3] + qmmm
-    calculator = total.build_calculator(system) # takes system by reference?
+    calculator = total.build_calculator(system)
+    
     with open("tests/spce_data/trimer_ss_ii.json") as fh:
         embedding_list = json.load(fh)
     for atom in embedding_list:
-        system.subsystems[atom] = Subsystem.II
+        calculator.system.subsystems[atom] = Subsystem.II
+        
     results = calculator.calculate()
     forces = results.forces
-    print()
+    
     np.set_printoptions(
         precision=4,       # digits after decimal
         suppress=True,     # avoid scientific notation for small values
-        # linewidth=120,     # characters before wrapping
-        # threshold=1000,    # number of elements before abbreviating with ...
     )
+    print()
     print("spce, QM/MM")
     print(f"I_II: {I_II}")
     print(f"I_III: {I_III}")
@@ -215,35 +214,27 @@ def test_calculator_spce():
 
 
 def test_calculator_spce_mm_only():
-    # return
+    sys_name = "hoh_123"
     system = System.load(
-        "tests/spce_data/hoh_trimer_dimer.pdb",
+        f"tests/spce_data/{sys_name}.pdb",
         "tests/spce_data/spce.xml"
     )
-    # with open("tests/tip4pew_data/trimer_ss_ii.json") as fh:
-    #     embedding_list = json.load(fh)
-    # for atom in embedding_list:
-    #     system.subsystems[atom] = Subsystem.II
     mm = MMHamiltonian(
         forcefield=[
             "tests/spce_data/spce.xml",
             "tests/spce_data/spce_residues.xml",
         ],
-        # pme_gridnumber=30,
-        # pme_alpha=5.0,
         nonbonded_method="NoCutoff",
     )
     total = mm
     calculator = total.build_calculator(system)
     results = calculator.calculate()
     forces = results.forces
-    print()
     np.set_printoptions(
         precision=4,       # digits after decimal
         suppress=True,     # avoid scientific notation for small values
-        # linewidth=120,     # characters before wrapping
-        # threshold=1000,    # number of elements before abbreviating with ...
     )
+    print()
     print("spce, MM only")
     print("subsystem I")
     print(forces[:3])
@@ -251,3 +242,4 @@ def test_calculator_spce_mm_only():
     print(forces[3:6])
     print("subsystem III")
     print(forces[6:])
+    np.save(f"tests/spce_data/reference/{sys_name}_forces.npy",forces)

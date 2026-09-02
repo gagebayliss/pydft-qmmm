@@ -17,9 +17,6 @@ from numpy.typing import NDArray
 import openmm
 import openmm.unit
 
-from pydft_qmmm.utils.misc import wrap_positions
-from pydft_qmmm.utils.misc import minimum_image_displacement
-
 if TYPE_CHECKING:
     from typing import Any
     from numpy.typing import NDArray
@@ -67,14 +64,12 @@ def compute_positions(system: System, positions: NDArray[np.float64]) -> NDArray
             pos1 = new_positions[system.virtual_parents[i][0]]
             pos2 = new_positions[system.virtual_parents[i][1]]
             v12 = pos2 - pos1
-            # v12 = minimum_image_displacement(v12,system.box)
 
             w1 = system.virtual_parent_weights[i][0]
             w2 = system.virtual_parent_weights[i][1]
 
             assert np.isclose(w1 + w2, 1.0,atol=1e-2)
 
-            # relative to first virtual parent
             virtual_displacement = v12 * w2
 
             new_positions[site_index] = pos1 + virtual_displacement
@@ -85,8 +80,6 @@ def compute_positions(system: System, positions: NDArray[np.float64]) -> NDArray
             pos3 = new_positions[system.virtual_parents[i][2]]
             v12 = pos2 - pos1
             v13 = pos3 - pos1
-            # v12 = minimum_image_displacement(v12,system.box)
-            # v13 = minimum_image_displacement(v13,system.box)
 
             w1 = system.virtual_parent_weights[i][0]
             w2 = system.virtual_parent_weights[i][1]

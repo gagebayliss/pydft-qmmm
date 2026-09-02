@@ -21,7 +21,6 @@ import openmm
 import openmm.unit
 
 from pydft_qmmm.utils import Subsystem
-from pydft_qmmm.utils import virtual_sites
 from pydft_qmmm.interfaces import MMInterface
 from pydft_qmmm.potentials import AtomicPotential
 
@@ -360,8 +359,6 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
             self.base_force_mask * base_state.getForces(asNumpy=True)
             / openmm.unit.kilojoule_per_mole * openmm.unit.angstrom
         )
-        forces = np.asarray(forces)
-        # object.__setattr__(self, "_last_base_forces", forces.copy())
         if self.aux_energy_group:
             aux_state = openmm_utils._generate_state(
                 self.aux_context, self.aux_energy_group,

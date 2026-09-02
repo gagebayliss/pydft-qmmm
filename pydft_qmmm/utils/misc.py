@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .constants import KB
+from . import virtual_sites
 
 if TYPE_CHECKING:
     from types import MappingProxyType
@@ -101,20 +102,6 @@ def wrap_positions(
         temp = residue_positions + diff[:, np.newaxis, :]
         new_positions[atoms] = temp.reshape((len(atoms), 3))
     return new_positions
-
-def minimum_image_displacement(
-        displacements: NDArray[np.float64],
-        box: NDArray[np.float64],
-) -> NDArray[np.float64]:
-    print("minimum_image_displacement")
-    print("box")
-    print(box)
-    box_lengths = box
-    new_displacements = displacements.copy()
-    new_displacements -= box_lengths * np.floor(
-        displacements / box_lengths + 0.5
-    )
-    return new_displacements
 
 
 def center_positions(
@@ -210,6 +197,11 @@ def numerical_gradient(
         for j in range(3):
             # Perform first finite difference displacement.
             calculator.system.positions[atom, j] += dist
+            calculator.system.positions[:] =\
+                virtual_sites.distribute_forces(
+                    calculator.system, 
+                    calculator.system.positions
+                )
             if components is not None:
                 ref_1 = 0
                 comps = calculator.calculate(False).components
@@ -219,6 +211,11 @@ def numerical_gradient(
                 ref_1 = calculator.calculate(False).energy
             # Perform second finite difference displacement.
             calculator.system.positions[atom, j] -= 2*dist
+            calculator.system.positions[:] =\
+                virtual_sites.distribute_forces(
+                    calculator.system, 
+                    calculator.system.positions
+                )
             if components is not None:
                 ref_0 = 0
                 comps = calculator.calculate(False).components
@@ -228,4 +225,9 @@ def numerical_gradient(
                 ref_0 = calculator.calculate(False).energy
             grad[i, j] = (ref_1 - ref_0) / (2*dist)
             calculator.system.positions[atom, j] += dist
+            calculator.system.positions[:] =\
+                virtual_sites.distribute_forces(
+                    calculator.system, 
+                    calculator.system.positions
+                )
     return grad
