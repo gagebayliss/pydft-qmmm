@@ -3,18 +3,13 @@ from __future__ import annotations
 
 __all__ = [
     "DrudeData",
-    "DrudeSCF",
-    "DrudeSolver",
-    "DrudeStepInfo",
-    "OpenMMDrudeForceOracle",
-    "drude_relaxation_step",
+    "DrudeSCFIterator",
+    "CompositeSCF",
     "extract_drude_data",
 ]
 
 from .drude_data import DrudeData
 from .drude_data import extract_drude_data
-from .drude_scf import DrudeSCF
-from .drude_solver import DrudeSolver
-from .drude_solver import DrudeStepInfo
-from .drude_solver import drude_relaxation_step
-from .openmm_oracle import OpenMMDrudeForceOracle
+from .drude import DrudeSCF
+from .drude_solver import DrudeSCFIterator
+from .drude_solver import CompositeSCF

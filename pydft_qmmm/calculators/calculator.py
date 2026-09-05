@@ -60,14 +60,14 @@ class Calculator(ABC):
     Args:
         system: The system whose atom positions, atom identities, and
             geometry will be used to calculate energies and forces.
+        calculator_group: label, one of QM, MM, or Composite.
 
     Attributes:
-        _calculator_group: indicates "QM", "MM", or "Composite".
         _plugins: The list of plugins that have been registered by the
             calculator.
     """
     system: System
-    _calculator_group: str = ""
+    calculator_group: str = field(kw_only=True)
     _plugins: list[CalculatorPlugin] = field(default_factory=list, init=False)
 
     @pluggable_method
@@ -96,22 +96,6 @@ class Calculator(ABC):
     @abstractmethod
     def name(self) -> str:
         """The name of the calculator, for logging purposes."""
-
-    @property
-    def calculator_group(self) -> str:
-        """QM, MM, or Composite."""
-        if self._calculator_group.lower() == "composite":
-            return "Composite"
-        else:
-            return self._calculator_group.upper()
-
-    @calculator_group.setter
-    def calculator_group(self, value) -> None:
-        """QM, MM, or Composite."""
-        if not value.upper() in {"QM","MM","COMPOSITE"}:
-            raise ValueError("...")
-        self._calculator_group = value
-
 
     def register_plugin(
             self,

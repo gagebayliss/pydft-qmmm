@@ -11,8 +11,6 @@ import openmm
 from pydft_qmmm.calculators import CalculatorPlugin
 
 from .drude_data import extract_drude_data
-from .drude_solver import DrudeSolver
-from .openmm_oracle import OpenMMDrudeForceOracle
 
 if TYPE_CHECKING:
     from pydft_qmmm.calculators import Results
@@ -59,10 +57,8 @@ class DrudeSCF(CalculatorPlugin):
             return self._solver
         potential = self.calculator.potential # needs to be MM potential?
         data = extract_drude_data(potential.base_context.getSystem())
-        # oracle = OpenMMDrudeForceOracle(potential, data)
         self._solver = DrudeSolver(
             data,
-            # oracle,
             potential,
             force_tolerance=self.force_tolerance,
             displacement_tolerance=self.displacement_tolerance,

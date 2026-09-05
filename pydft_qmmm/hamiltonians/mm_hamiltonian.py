@@ -65,8 +65,7 @@ class MMHamiltonian(PotentialHamiltonian):
             interface = interface_info[1](system, **self.options)
         except TypeError as e:
             raise e  # Todo: Make this informative.
-        calculator = PotentialCalculator(system, interface)
-        calculator.calculator_group = "MM"
+        calculator = PotentialCalculator(system, interface, calculator_group="MM")
         return calculator
 
     def __str__(self) -> str:

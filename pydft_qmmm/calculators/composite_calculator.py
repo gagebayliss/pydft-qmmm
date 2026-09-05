@@ -13,6 +13,7 @@ __all__ = [
 
 from abc import abstractmethod
 from dataclasses import dataclass
+from dataclasses import field
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -37,6 +38,10 @@ class CompositeCalculator(Calculator):
         calculators: The calculators that will perform sub-calculations.
     """
     calculators: list[Calculator]
+    calculator_group: str = field(
+        default="Composite",
+        init=False,
+    )
 
     @pluggable_method
     def calculate(
@@ -90,11 +95,6 @@ class CompositeCalculator(Calculator):
         for calculator in self.calculators:
             name += calculator.name + " "
         return name + "]"
-
-    @property
-    def calculator_group(self) -> str:
-        """QM, MM, or Composite."""
-        return "Composite"
 
 
 class CompositeCalculatorPlugin(CalculatorPlugin):
