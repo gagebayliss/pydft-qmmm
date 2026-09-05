@@ -27,12 +27,7 @@ from .selection_utils import FAST_KEYWORDS
 from .selection_utils import SLOW_KEYWORDS
 from .file_manager import load_system
 
-import openmm #TODO: only import what is needed
-# TODO: fix this... should not access hidden methods of openmm_factory
-from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_topology
-from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_modeller
-from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_forcefield
-from pydft_qmmm.interfaces.openmm.openmm_factory import _build_omm_system
+from pydft_qmmm.utils import load_omm_system
 from pydft_qmmm.utils import extract_virtual_sites
 
 from pydft_qmmm.utils import system_cache
@@ -314,18 +309,7 @@ class System(Sequence[_SystemAtom]):
            set up the forcefield, with information about the 
            virtual sites.
         """
-        if isinstance(forcefield, str):
-            forcefield = [forcefield]
-        omm_box = [openmm.Vec3(*x)*openmm.unit.angstrom for x in self.box.T]
-        if not all(x := [fh.endswith(".xml") for fh in forcefield]):
-            raise ValueError("...")
-
-        omm_topology = _build_omm_topology(self, forcefield)
-        if np.any(self.box):
-            omm_topology.setPeriodicBoxVectors(omm_box)
-        omm_modeller = _build_omm_modeller(self, omm_topology)
-        omm_forcefield = _build_omm_forcefield(forcefield, omm_modeller)
-        omm_system = _build_omm_system(omm_forcefield, omm_modeller)
+        omm_system = load_omm_system(self,forcefield)
 
         virtual_sites = extract_virtual_sites(omm_system) 
 
