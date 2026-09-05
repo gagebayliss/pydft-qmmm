@@ -10,7 +10,12 @@ from numpy.typing import NDArray
 import openmm
 import openmm.unit
 
-ONE_4PI_EPS0 = 138.93545764438198
+ONE_4PI_EPS0 = (
+    138.93545764438198
+    * openmm.unit.kilojoule_per_mole
+    * openmm.unit.nanometer
+    / openmm.unit.elementary_charge**2
+)
 
 
 @dataclass(frozen=True)
@@ -65,12 +70,15 @@ def extract_drude_data(omm_system: openmm.System) -> DrudeData | None:
             drude_force.getParticleParameters(i)
         )
         charge_e = charge / openmm.unit.elementary_charge
-        alpha_nm3 = polarizability / openmm.unit.nanometer**3
+        alpha_a3 = polarizability / openmm.unit.angstrom**3
         drude_indices.append(int(particle))
         parent_indices.append(int(parent))
         charges.append(float(charge_e))
-        polarizabilities.append(float(alpha_nm3))
-        force_constants.append(float(ONE_4PI_EPS0 * charge_e**2 / alpha_nm3))
+        polarizabilities.append(float(alpha_a3))
+        one_4pi_eps0 = ONE_4PI_EPS0 /\
+            openmm.unit.kilojoule_per_mole / openmm.unit.angstrom *\
+            openmm.unit.elementary_charge**2
+        force_constants.append(float(one_4pi_eps0 * charge_e**2 / alpha_a3))
     return DrudeData(
         drude_indices=np.array(drude_indices, dtype=np.int64),
         parent_indices=np.array(parent_indices, dtype=np.int64),
