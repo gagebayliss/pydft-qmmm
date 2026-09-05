@@ -9,15 +9,61 @@ from typing import TYPE_CHECKING
 import openmm
 
 from pydft_qmmm.calculators import CalculatorPlugin
+from pydft_qmmm.integrators import IntegratorPlugin
+from pydft_qmmm.integrators import Returns
 
 from .drude_data import extract_drude_data
+from .drude_solver import DrudeSCFIterator
+from .drude_solver import CompositeSCF
 
 if TYPE_CHECKING:
     from pydft_qmmm.calculators import Results
+    from pydft_qmmm.system import System
     from .drude_solver import DrudeSCFInfo
 
 
+class DrudeSCF(IntegratorPlugin):
+    def __init__(
+        self,
+        calculator,
+        drude_data,
+        force_tolerance: float = 1.0,
+    ) -> None:
+        self.calculator = calculator
+        self.drude_data = drude_data
+        self.force_tolerance = force_tolerance
+        
+    def _modify_integrate(
+            self,
+            integrate: Callable[[bool, bool], Results],
+    ) -> Callable[[bool, bool], Results]:
+        """Modify the calculate routine to relax Drudes beforehand."""
+        def inner(system: System) -> Returns:
+            
+            updated_positions, updated_velocities = integrate(system)
+            original_positions = system.positions.copy() # deep copy?
+            
+            self.calculator.system.positions[:] = updated_positions
+            scf_iterator = DrudeSCFIterator(
+                self.calculator,
+                self.drude_data,
+                self.force_tolerance,
+            )
+            scf = CompositeSCF(
+                scf_iterator,
+                max_iterations=50,
+            )
+            scf.solve()
+            updated_positions = self.calculator.system.positions.copy()
+            # this is brutal. 
+            # could redesign SCF to avoid this... but seems inevitable.
+            self.calculator.system.positions[:] = original_positions
+            updated_velocities = self.calculator.system.velocities.copy()
+            updated_velocities[self.drude_data.drude_indices] = 0.0
 
+            return updated_positions, updated_velocities
+        return inner
+    
 
 class DrudeSCF(CalculatorPlugin):
     """Relax Drude oscillators before calculator evaluations.

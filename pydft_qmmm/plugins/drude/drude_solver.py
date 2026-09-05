@@ -16,12 +16,12 @@ from .drude_data import DrudeData
 
 
 class DrudeSCFIterator:
-    def __init__(self,calculator,data,force_tolerance,stopping_ratio,damping):
+    def __init__(self,calculator,data,force_tolerance):
         self.calculator = calculator
         self.data = data
         self.force_tolerance = force_tolerance
-        self.stopping_ratio = stopping_ratio
-        self.damping = damping
+        self.stopping_ratio = 0.90
+        self.damping = 1.0
         self._forces = np.array([np.inf])
         self._last_forces = np.array([np.inf])
         self._history = {
