@@ -66,6 +66,7 @@ class QMHamiltonian(PotentialHamiltonian):
         except TypeError as e:
             raise e  # Todo: Make this informative.
         calculator = PotentialCalculator(system, interface)
+        calculator.calculator_group = "QM"
         return calculator
 
     def __str__(self) -> str:

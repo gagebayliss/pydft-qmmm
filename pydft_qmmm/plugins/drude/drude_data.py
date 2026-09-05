@@ -23,6 +23,8 @@ class DrudeData:
         charges: Drude particle charges in elementary charge.
         polarizabilities: Drude polarizabilities in nm^3.
         force_constants: Harmonic spring constants in kJ/mol/nm^2.
+
+    Disclosure: AI-generated code.
     """
     drude_indices: NDArray[np.int64]
     parent_indices: NDArray[np.int64]
@@ -43,6 +45,8 @@ def extract_drude_data(omm_system: openmm.System) -> DrudeData | None:
 
     Returns:
         Drude oscillator metadata for fixed-point relaxation.
+
+    Disclosure: AI-generated code.
     """
     drude_forces = [
         force for force in omm_system.getForces()

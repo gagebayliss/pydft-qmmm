@@ -13,6 +13,7 @@ import openmm.unit
 from numpy.typing import NDArray
 
 from pydft_qmmm.interfaces.openmm import openmm_utils
+from pydft_qmmm.calculators import Results
 
 if TYPE_CHECKING:
     from pydft_qmmm.interfaces.openmm.openmm_interface import OpenMMPotential
@@ -37,10 +38,9 @@ class OpenMMDrudeForceOracle:
 
     def _forces(self) -> NDArray[np.float64]:
         """Return all OpenMM forces in kJ/mol/nm."""
-        self.potential.base_context.computeVirtualSites()
         state = openmm_utils._generate_state(self.potential.base_context)
         return state.getForces(asNumpy=True).value_in_unit(
-            openmm.unit.kilojoule_per_mole/openmm.unit.nanometer,
+            openmm.unit.kilojoule_per_mole/openmm.unit.angstrom,
         )
 
     @contextmanager
@@ -94,11 +94,11 @@ class OpenMMDrudeForceOracle:
                     force.setExceptionParameters(*params)
                 force.updateParametersInContext(self.potential.base_context)
 
-    def __call__(
+    def calculate(
             self,
             positions: NDArray[np.float64],
     ) -> NDArray[np.float64]:
-        """Return forces on Drude particles in kJ/mol/nm."""
+        """Return forces on Drude particles in kJ/mol/A."""
         self.potential.update_positions(positions)
         forces = self._forces()
         if self.masked_drude_indices and self.zero_charge_atoms:
@@ -107,4 +107,7 @@ class OpenMMDrudeForceOracle:
             for atom_index in self.data.drude_indices:
                 if int(atom_index) in self.masked_drude_indices:
                     forces[atom_index, :] = masked_forces[atom_index, :]
+            # energy = 0
+        # results = Results(energy,forces)
         return forces[self.data.drude_indices, :]
+        

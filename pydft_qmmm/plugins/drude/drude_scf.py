@@ -57,19 +57,13 @@ class DrudeSCF(CalculatorPlugin):
         """Build or retrieve the Drude solver for this calculator."""
         if self._solver is not None:
             return self._solver
-        potential = self.calculator.potential
-        integrator = potential.base_context.getIntegrator()
-        if isinstance(integrator, openmm.DrudeSCFIntegrator):
-            raise RuntimeError(
-                "DrudeSCF requires an OpenMM context with "
-                'drude_engine="native"; the current context uses '
-                "OpenMM's DrudeSCFIntegrator.",
-            )
+        potential = self.calculator.potential # needs to be MM potential?
         data = extract_drude_data(potential.base_context.getSystem())
-        oracle = OpenMMDrudeForceOracle(potential, data)
+        # oracle = OpenMMDrudeForceOracle(potential, data)
         self._solver = DrudeSolver(
             data,
-            oracle,
+            # oracle,
+            potential,
             force_tolerance=self.force_tolerance,
             displacement_tolerance=self.displacement_tolerance,
             max_iterations=self.max_iterations,
@@ -81,11 +75,6 @@ class DrudeSCF(CalculatorPlugin):
 
     def relax(self) -> None:
         """Relax Drude positions and update the calculator system."""
-        solver = self._get_solver()
-        positions, info = solver.relax(self.calculator.system.positions)
-        self.calculator.system.positions[:] = positions
-        self.calculator.potential.base_context.computeVirtualSites()
-        self.last_info = info
 
     def _modify_calculate(
             self,
@@ -96,6 +85,12 @@ class DrudeSCF(CalculatorPlugin):
                 return_forces: bool = True,
                 return_components: bool = True,
         ) -> Results:
-            self.relax()
+            solver = self._get_solver()
+
+            positions, info = solver.relax(self.calculator.system.positions)
+            self.calculator.system.positions[:] = positions
+
+            self.last_info = info
+
             return calculate(return_forces, return_components)
         return inner

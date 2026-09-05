@@ -91,6 +91,11 @@ class CompositeCalculator(Calculator):
             name += calculator.name + " "
         return name + "]"
 
+    @property
+    def calculator_group(self) -> str:
+        """QM, MM, or Composite."""
+        return "Composite"
+
 
 class CompositeCalculatorPlugin(CalculatorPlugin):
     """The plugin base class for modifying composite calculator routines.
