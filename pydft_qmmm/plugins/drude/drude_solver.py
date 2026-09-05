@@ -76,8 +76,8 @@ class DrudeSolver:
 
     Args:
         data: Drude oscillator metadata.
-        force_oracle: Callable returning forces on Drude particles in
-            kJ/mol/A for a full positions array in Angstrom.
+        calculator: Callable returning results containing forces on system in
+            kJ/mol/A.
         force_tolerance: RMS Cartesian Drude-force component required for
             convergence, in kJ/mol/A.
         displacement_tolerance: Optional maximum Drude-particle displacement
@@ -94,7 +94,7 @@ class DrudeSolver:
     def __init__(
             self,
             data: DrudeData,
-            force_oracle: Callable[[NDArray[np.float64]], NDArray[np.float64]],
+            calculator: Callable[...,NDArray[np.float64]],
             *,
             force_tolerance: float = 10.0, #angstrom
             displacement_tolerance: float | None = None,
@@ -104,7 +104,7 @@ class DrudeSolver:
             algorithm: str = "diagonal",
     ) -> None:
         self.data = data
-        self.force_oracle = force_oracle
+        self.calculator = calculator
         self.force_tolerance = force_tolerance
         self.displacement_tolerance = displacement_tolerance
         self.max_iterations = max_iterations
@@ -127,7 +127,9 @@ class DrudeSolver:
             Updated full-system positions in Angstrom and step
             diagnostics.
         """
-        forces = self.force_oracle(positions)
+        self.calculator.system.positions[:] = positions
+        results = self.calculator.calculate()
+        forces = results.forces[self.data.drude_indices]
         return drude_relaxation_step(
             self.data,
             positions,
@@ -154,8 +156,9 @@ class DrudeSolver:
         final_rms_force = np.inf
         previous_force_squared = np.inf
         for iteration in range(1, self.max_iterations + 1):
-            forces = self.force_oracle(relaxed)
-
+            self.calculator.positions[:] = relaxed
+            results = self.calculator.calculate()
+            forces = results.forces[self.data.drude_indices]
             stepped, step_info = drude_relaxation_step(
                 self.data,
                 relaxed,
