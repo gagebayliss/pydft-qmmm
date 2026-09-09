@@ -11,6 +11,7 @@ import openmm
 from pydft_qmmm.calculators import CalculatorPlugin
 from pydft_qmmm.integrators import IntegratorPlugin
 from pydft_qmmm.integrators import Returns
+from pydft_qmmm.utils import load_omm_system
 
 from .drude_data import extract_drude_data
 from .drude_solver import DrudeSCFIterator
@@ -25,13 +26,15 @@ if TYPE_CHECKING:
 class DrudeSCF(IntegratorPlugin):
     def __init__(
         self,
-        calculator, # mm calculator, likely
-        drude_data, # 
-        force_tolerance: float = 1.0,
+        calculator, 
+        forcefield: list[str] | str,
+        force_tolerance: float = 10.0, #kjmol/angstrom
     ) -> None:
         self.calculator = calculator
-        self.drude_data = drude_data
         self.force_tolerance = force_tolerance
+        omm_system = load_omm_system(calculator.system,forcefield)
+        self.drude_data = extract_drude_data(omm_system)
+        del omm_system
         
     def _modify_integrate(
             self,
@@ -39,11 +42,17 @@ class DrudeSCF(IntegratorPlugin):
     ) -> Callable[[bool, bool], Results]:
         """Modify the calculate routine to relax Drudes beforehand."""
         def inner(system: System) -> Returns:
-            
             updated_positions, updated_velocities = integrate(system)
-            original_positions = system.positions.copy() # deep copy?
-            
+            # print("updated_positions[self.drude_data.drude_indices] before solve")
+            # print(updated_positions[self.drude_data.drude_indices])
+            original_positions = system.positions.base.copy()
+            # print("original_positions[self.drude_data.drude_indices]")
+            # print(original_positions[self.drude_data.drude_indices])
             self.calculator.system.positions[:] = updated_positions
+            
+            # print("self.calculator.system.positions[:]")
+            # print(self.calculator.system.positions[:])
+            
             scf_iterator = DrudeSCFIterator(
                 self.calculator,
                 self.drude_data,
@@ -54,12 +63,20 @@ class DrudeSCF(IntegratorPlugin):
                 max_iterations=50,
             )
             scf.solve()
-            updated_positions = self.calculator.system.positions.copy()
+            updated_positions = self.calculator.system.positions.base.copy()
+            
+            # print("self.drude_data.drude_indices")
+            # print(self.drude_data.drude_indices)
+            
+            drude_indices = self.drude_data.drude_indices
+            # print("updated_positions[self.drude_data.drude_indices] after solve")
+            # print(updated_positions[self.drude_data.drude_indices])
             # this is brutal. 
             # could redesign SCF to avoid this... but seems inevitable.
             self.calculator.system.positions[:] = original_positions
-            updated_velocities = self.calculator.system.velocities.copy()
+            assert self.calculator.system is system
             updated_velocities[self.drude_data.drude_indices] = 0.0
+            
 
             return updated_positions, updated_velocities
         return inner

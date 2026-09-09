@@ -198,7 +198,7 @@ def numerical_gradient(
             # Perform first finite difference displacement.
             calculator.system.positions[atom, j] += dist
             calculator.system.positions[:] =\
-                virtual_sites.distribute_forces(
+                virtual_sites.compute_positions(
                     calculator.system, 
                     calculator.system.positions
                 )
@@ -212,7 +212,7 @@ def numerical_gradient(
             # Perform second finite difference displacement.
             calculator.system.positions[atom, j] -= 2*dist
             calculator.system.positions[:] =\
-                virtual_sites.distribute_forces(
+                virtual_sites.compute_positions(
                     calculator.system, 
                     calculator.system.positions
                 )
@@ -226,7 +226,7 @@ def numerical_gradient(
             grad[i, j] = (ref_1 - ref_0) / (2*dist)
             calculator.system.positions[atom, j] += dist
             calculator.system.positions[:] =\
-                virtual_sites.distribute_forces(
+                virtual_sites.compute_positions(
                     calculator.system, 
                     calculator.system.positions
                 )

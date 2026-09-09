@@ -3,8 +3,9 @@ from __future__ import annotations
 
 __all__ = [
     "DrudeData",
-    "DrudeSCFIterator",
-    "CompositeSCF",
+    "DrudeSCF",
+    # "DrudeSCFIterator",
+    # "CompositeSCF",
     "extract_drude_data",
 ]
 
