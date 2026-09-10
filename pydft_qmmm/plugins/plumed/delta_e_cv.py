@@ -41,7 +41,7 @@ class DeltaECV(CollectiveVariable):
             ):
         self.states = states
         self._cv_gradient = None
-        self._state_names = (key.strip() for key in scheme.split("-"))
+        self._state_names = [key.strip() for key in scheme.split("-")]
         if len(states) != 2:
             raise ValueError("...")
         if not (self._state_names[0] in states.keys() and\
