@@ -50,6 +50,7 @@ class PLUMED(CalculatorPlugin):
         self.plumed.cmd("setMDEngine", "python")
         self.arbitrary_cvs = arbitrary_cvs
         self.frame = 0
+        self._bypass_plumed = False
 
     def modify(
             self,
@@ -92,6 +93,12 @@ class PLUMED(CalculatorPlugin):
                 return_components: bool = True,
         ) -> Results:
             results = calculate(return_forces, return_components)
+            
+            if self._bypass_plumed:
+                # arbitrary CVs call calculator,
+                # infinite recursion if we don't do this
+                return results
+                
             self.plumed.cmd("setStep", self.frame)
             self.frame += 1
             self.plumed.cmd("setBox", self.calculator.system.box.T)
@@ -106,9 +113,11 @@ class PLUMED(CalculatorPlugin):
             cv_values = np.zeros((len(self.arbitrary_cvs),))
             cv_forces = np.zeros((len(self.arbitrary_cvs),))
             for i, (cv_name, cv) in enumerate(self.arbitrary_cvs.items()):
+                self._bypass_plumed = True
                 cv_values[i] = cv.get_scalar_cv(self.calculator,results)
-                self.plumed.cmd(f"setExtraCV {cv_name}", cv_values[i])
-                self.plumed.cmd(f"setExtraCVForce {cv_name}", cv_forces[i])
+                self._bypass_plumed = False
+                self.plumed.cmd(f"setExtraCV {cv_name}", cv_values[i:i+1])
+                self.plumed.cmd(f"setExtraCVForce {cv_name}", cv_forces[i:i+1])
 
             self.plumed.cmd("prepareCalc")
             self.plumed.cmd("performCalc")

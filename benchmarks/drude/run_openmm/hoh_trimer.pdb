@@ -1,0 +1,18 @@
+REMARK   1 CREATED WITH OPENMM 8.4, 2026-07-13
+HETATM    1  O   HOH A   1       0.000   0.000   0.000  1.00  0.00           O  
+HETATM    2  H1  HOH A   1       0.904  -0.034   0.312  1.00  0.00           H  
+HETATM    3  H2  HOH A   1      -0.154   0.925  -0.190  1.00  0.00           H  
+HETATM    4 DOH2 HOH A   1       0.154   0.183   0.025  1.00  0.00          EP  
+HETATM    5 OM   HOH A   1      -0.042  -0.030   0.005  1.00  0.00          EP  
+HETATM    6  O   HOH A   2      -1.182  -2.177  -1.722  1.00  0.00           O  
+HETATM    7  H1  HOH A   2      -0.671  -1.471  -1.327  1.00  0.00           H  
+HETATM    8  H2  HOH A   2      -1.023  -2.092  -2.662  1.00  0.00           H  
+HETATM    9 DOH2 HOH A   2      -1.044  -2.015  -1.834  1.00  0.00          EP  
+HETATM   10 OM   HOH A   2      -1.255  -2.248  -1.695  1.00  0.00          EP  
+HETATM   11  O   HOH A   3      -4.182  -5.177  -4.722  1.00  0.00           O  
+HETATM   12  H1  HOH A   3      -3.671  -4.471  -4.327  1.00  0.00           H  
+HETATM   13  H2  HOH A   3      -4.023  -5.092  -5.662  1.00  0.00           H  
+HETATM   14 DOH2 HOH A   3      -4.044  -5.015  -4.834  1.00  0.00          EP  
+HETATM   15 OM   HOH A   3      -4.255  -5.248  -4.695  1.00  0.00          EP  
+TER      16      HOH A   3
+END

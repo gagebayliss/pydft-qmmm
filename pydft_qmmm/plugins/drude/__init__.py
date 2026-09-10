@@ -4,6 +4,7 @@ from __future__ import annotations
 __all__ = [
     "DrudeData",
     "DrudeSCFIterator",
+    "DrudeSCF",
     "CompositeSCF",
     "extract_drude_data",
 ]
