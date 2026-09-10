@@ -28,7 +28,7 @@ NEEDS_CUTOFF = ("PME", "EWALD", "CUTOFFPERIODIC", "CUTOFFNONPERIODIC")
 PERIODIC = ("PME", "EWALD", "CUTOFFPERIODIC")
 SUPPORTED_FORCES = (
     openmm.CMMotionRemover,
-    openmm.CMAPTorsionForce,
+    # openmm.CMAPTorsionForce,
     openmm.CustomNonbondedForce,
     openmm.CustomBondForce,
     openmm.HarmonicAngleForce,
