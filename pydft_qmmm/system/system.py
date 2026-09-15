@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from numpy.typing import NDArray
     from .atom import Atom
+    from pydft_qmmm.utils.virtual_sites import VirtualSite
 
 
 def _del_attr(self: System, attr: str) -> Callable[[Any], None]:
@@ -122,11 +123,21 @@ class System(Sequence[_SystemAtom]):
             self,
             atoms: list[Atom],
             box: NDArray[np.float64] = np.zeros((3, 3)),
+            virtual_sites: list[VirtualSite] | None = None,
     ) -> None:
+        self._virtual_sites = None
+        self._atoms = None
+        self._system_atoms = None
+
         for name, field_ in getattr(self, "__dataclass_fields__").items():
             setattr(self, "_" + name, field_.default_factory())
+
         self._setup(atoms)
         self._box: ObservedArray[Any, array_float] = ObservedArray(box)
+
+        if virtual_sites is not None:
+            self._setup_virtual_sites(virtual_sites)
+
         # Delete residue_map cached property if residues changes.
         self.residues.register_notifier(_del_attr(self, "residue_map"))
 
@@ -245,6 +256,38 @@ class System(Sequence[_SystemAtom]):
         self._atoms = atoms
         self._system_atoms = system_atoms
 
+    def copy(self) -> System:
+        """Copy the system.
+
+        Returns:
+            An identical System object.
+        """
+        return System(self._atoms,self._box,self._virtual_sites)
+
+    def copy_selection(
+            self,
+            key: int | slice | str,
+            keep_box: bool=True,
+        ) -> System:
+        """Copy a subset of the system.
+
+        Returns:
+            An System object containing only atoms and virtual
+            sites addressed by the key.
+        """
+        if isinstance(key, str):
+            indices = [i for i in sorted(self.select(key))]
+        else:
+            indices = key
+        atoms = [self._atoms[i] for i in indices]
+        v_idx = [
+            i for i, virtual_site_idx in enumerate(self.virtual_site_indices)\
+            if virtual_site_idx in indices
+        ]
+        virtual_sites = [self._virtual_sites[i] for i in v_idx]
+        if keep_box:
+            return System(atoms,self._box,virtual_sites)
+        return System(atoms,np.zeros((3, 3)),virtual_sites)
 
     def index(self, atom: Any, start: int = 0, stop: int = -1) -> int:
         """Find the first index where the atom object is found.
@@ -290,16 +333,17 @@ class System(Sequence[_SystemAtom]):
         """
         pdb_filenames = [f for f in args if f.endswith('.pdb')]
         atoms, box = load_system(*pdb_filenames)
-        system =  System(atoms, box)
-
+        system = System(atoms,box)
+        virtual_sites = None
         xml_filenames = [f for f in args if f.endswith('.xml')]
         if len(xml_filenames):
-            system._load_virtual_sites(xml_filenames)
-            
+            virtual_sites = System._load_virtual_sites(system,xml_filenames)
+            system = System(atoms, box, virtual_sites)
         return system 
 
+    @staticmethod
     def _load_virtual_sites(
-            self, 
+            system,
             forcefield: list[str] | str,
         ) -> None:
         """Load virtual sites from XML force field files.
@@ -309,10 +353,15 @@ class System(Sequence[_SystemAtom]):
            set up the forcefield, with information about the 
            virtual sites.
         """
-        omm_system = load_omm_system(self,forcefield)
-
+        omm_system = load_omm_system(system,forcefield)
         virtual_sites = extract_virtual_sites(omm_system) 
-
+        del omm_system
+        return virtual_sites
+    
+    def _setup_virtual_sites(
+            self,
+            virtual_sites: list[VirtualSite],
+        ) -> None:
         # Populate ObservedArray objects.
         virtual_field_names = [
             "virtual_site_indices",
@@ -344,8 +393,6 @@ class System(Sequence[_SystemAtom]):
                     
             setattr(self, "_" + name, ObservedArray(temp))
         self._virtual_sites = virtual_sites
-
-        del omm_system
 
 
     def select(self, query: str) -> frozenset[int]:
