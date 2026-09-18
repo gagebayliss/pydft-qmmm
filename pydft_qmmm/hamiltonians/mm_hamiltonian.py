@@ -37,7 +37,11 @@ class MMHamiltonian(PotentialHamiltonian):
         self.interface = interface
         self.options = options
 
-    def build_calculator(self, system: System) -> PotentialCalculator:
+    def build_calculator(
+            self,
+            system: System,
+            platform: str = "CPU",
+        ) -> PotentialCalculator:
         """Build the calculator corresponding to the Hamiltonian.
 
         Args:
@@ -62,7 +66,7 @@ class MMHamiltonian(PotentialHamiltonian):
                 "of theory for the MMHamiltonian.",
             )
         try:
-            interface = interface_info[1](system, **self.options)
+            interface = interface_info[1](system, **self.options, platform=platform)
         except TypeError as e:
             raise e  # Todo: Make this informative.
         calculator = PotentialCalculator(system, interface, calculator_group="MM")

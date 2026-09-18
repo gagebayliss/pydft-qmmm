@@ -48,6 +48,7 @@ def openmm_interface_factory(
         nonbonded_cutoff: float | int = 14.,
         pme_gridnumber: int | tuple[int, int, int] | None = None,
         pme_alpha: float | int | None = None,
+        platform: str = "CPU",
 ) -> openmm_interface.OpenMMPotential:
     r"""Build the interface to OpenMM.
 
@@ -64,6 +65,8 @@ def openmm_interface_factory(
             lattice edge in PME summation.
         pme_alpha: The Gaussian width parameter in Ewald summation
             (:math:`\mathrm{nm^{-1}}`).
+        platform: The platform to use for the OpenMM kernels. One of
+            Reference, CPU, OpenCL, or CUDA.
 
     Returns:
         The OpenMM interface.
@@ -124,8 +127,8 @@ def openmm_interface_factory(
     )
     _adjust_system(system, base_system)
     aux_system = _empty_omm_system(system)
-    base_context = _build_omm_context(base_system, omm_modeller)
-    aux_context = _build_omm_context(aux_system, omm_modeller)
+    base_context = _build_omm_context(base_system, omm_modeller,platform)
+    aux_context = _build_omm_context(aux_system, omm_modeller,platform)
     wrapper = openmm_interface.OpenMMPotential(
         system,
         base_context=base_context,
@@ -346,6 +349,7 @@ def _adjust_system(
 def _build_omm_context(
         omm_system: openmm.System,
         omm_modeller: openmm.app.Modeller,
+        platform: str = "CPU",
 ) -> openmm.Context:
     """Build the OpenMM Context object.
 
@@ -353,6 +357,8 @@ def _build_omm_context(
         omm_system: The OpenMM representation of forces, constraints,
             and particles.
         omm_modeller: The OpenMM representation of the system.
+        plaform: The platform to use for the OpenMM kernels.
+            Reference, CPU, OpenCL, or CUDA.
 
     Returns:
         The OpenMM machinery required to perform energy and force
@@ -360,8 +366,7 @@ def _build_omm_context(
         platform to use, which is currently just the CPU platform.
     """
     omm_integrator = openmm.VerletIntegrator(1. * openmm.unit.femtosecond)
-    # We currently only support the CPU platform.
-    omm_platform = openmm.Platform.getPlatformByName("CPU")
+    omm_platform = openmm.Platform.getPlatformByName(platform)
     omm_context = openmm.Context(omm_system, omm_integrator, omm_platform)
     omm_context.setPositions(omm_modeller.positions)
     return omm_context
