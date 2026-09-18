@@ -65,7 +65,7 @@ def generate_velocities(
         out=np.zeros_like(momenta),
         where=masses != 0,
     )
-    return velocities
+    return velocities * (10**-5)
 
 
 def wrap_positions(
