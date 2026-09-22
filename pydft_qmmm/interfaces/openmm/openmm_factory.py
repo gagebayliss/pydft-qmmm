@@ -66,7 +66,7 @@ def openmm_interface_factory(
         pme_alpha: The Gaussian width parameter in Ewald summation
             (:math:`\mathrm{nm^{-1}}`).
         platform: The platform to use for the OpenMM kernels. One of
-            Reference, CPU, OpenCL, CUDA, or GPU.
+            Reference, CPU, OpenCL, CUDA. 
 
     Returns:
         The OpenMM interface.
@@ -358,7 +358,7 @@ def _build_omm_context(
             and particles.
         omm_modeller: The OpenMM representation of the system.
         plaform: The platform to use for the OpenMM kernels.
-            Reference, CPU, OpenCL, CUDA, or GPU.
+            Reference, CPU, OpenCL, CUDA.
 
     Returns:
         The OpenMM machinery required to perform energy and force
@@ -367,19 +367,21 @@ def _build_omm_context(
     """
     omm_integrator = openmm.VerletIntegrator(1. * openmm.unit.femtosecond)
     omm_platform = openmm.Platform.getPlatformByName(platform)
-    if platform == "GPU":
-        try: 
-            omm_context = openmm.Context(omm_system, omm_integrator, "CUDA")
-            print("-----------------------")
-            print("Using CUDA")
-            print("-----------------------")
-        except:
-            omm_context = openmm.Context(omm_system, omm_integrator, "OpenCL")
-            print("-----------------------")
-            print("Using OpenCL")
-            print("-----------------------")
-        finally:
-            raise RuntimeError("No suitable GPU platform")
-    omm_context = openmm.Context(omm_system, omm_integrator, omm_platform)
+    if platform.upper() == "CUDA" or platform.upper() == "OPENCL":
+        properties = {
+            "Precision" : "double", # necessary for converging Drudes w/ CUDA
+        }
+        omm_context = openmm.Context(
+            omm_system,
+            omm_integrator,
+            omm_platform,
+            properties,
+        )
+    else:
+        omm_context = openmm.Context(
+            omm_system,
+            omm_integrator,
+            omm_platform,
+        )
     omm_context.setPositions(omm_modeller.positions)
     return omm_context

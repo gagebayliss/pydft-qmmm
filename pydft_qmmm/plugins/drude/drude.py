@@ -1,4 +1,3 @@
-"""Calculator plugin for native Drude-SCF relaxation."""
 from __future__ import annotations
 
 __all__ = ["DrudeSCF"]
@@ -22,13 +21,12 @@ if TYPE_CHECKING:
     from pydft_qmmm.system import System
     from .drude_solver import DrudeSCFInfo
 
-
 class DrudeSCF(IntegratorPlugin):
     def __init__(
         self,
         calculator, 
         forcefield: list[str] | str,
-        force_tolerance: float = 10.0, #kjmol/angstrom
+        force_tolerance: float = 0.10, #kjmol/angstrom
         algorithm: str = "BFGS",
         max_iterations: int = 50,
         debug_log: str | None = None,
