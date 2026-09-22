@@ -91,15 +91,9 @@ class DeltaECV(CollectiveVariable):
             self._aux_calculators[state_name].system.positions[:] =\
                                         calculator.system.positions[indices]
             intra_result = self._aux_calculators[state_name].calculate()
-            
-#             print("///////////////////////////////////////////////")
-#             print(f"STATE: {state_name}")
-#             print(f"FULL ENERGY: {result.energy:.4f}")
-#             print(f"INTRAMOLECULAR ENERGY: {intra_result.energy:.4f}")
-#             print("///////////////////////////////////////////////")
 
             energies[state_name] = result.energy - intra_result.energy
-            forces[state_name] = result.forces 
+            forces[state_name] = result.forces.copy() 
             forces[state_name][indices] = forces[state_name][indices]\
                                           - intra_result.forces
 
