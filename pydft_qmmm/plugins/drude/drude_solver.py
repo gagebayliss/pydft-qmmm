@@ -6,6 +6,8 @@ __all__ = [
     "CompositeSCF"
 ]
 
+from annotations import TYPE_CHECKING
+
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -13,6 +15,9 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .drude_data import DrudeData
+
+if TYPE_CHECKING:
+    from pydft_qmmm import Calculator
 
 class DrudeCalculator:
     def __init__(self,calculator,drude_data):
@@ -46,7 +51,7 @@ class DrudeCalculator:
     def state(self,drude_coordinates) -> None:
         self.calculator.system.positions[self.indices] = drude_coordinates.reshape(-1,3)
 
-class CompositeSCF:
+class DrudeSCF:
     def __init__(
             self,
             calculator,
@@ -58,7 +63,6 @@ class CompositeSCF:
         self.max_iterations = max_iterations
         self.algorithm = algorithm
         self.force_tolerance = force_tolerance
-        self._is_converged = False
     
     def solve(self) -> None:
         try:
@@ -76,9 +80,58 @@ class CompositeSCF:
                 "maxiter" : self.max_iterations,
             },
         )
-        return result
-        
-    def is_converged(self) -> bool:
-        return self._is_converged
+        # TODO: expose more of result for debugging?
+        return result.fun, result.success
     
+class SCFAdapter():
+    """Adapt a calcluator with the interface
+        CompositeSCF expects.
 
+    Args:
+        calculator: A calculator exposing a 
+            calculate() method that returns
+            a Results object.
+    """
+    def __init__(
+        self,
+        calculator: Calculator,
+    ) -> None:
+        self.calculator = calculator
+
+    def solve(self) -> tuple[float,bool]:
+        result = self.calculator.calculate()
+        # assuming that the calculation converged...
+        return result.energy, True
+
+
+class CompositeSCF:
+    """Couple two SCF objects.
+
+    Args:
+        scf_objects: list of SCFs to solve.
+        objective_index: list index of SCF to use
+            for objective function.
+        tolerance: stopping condition, change in
+            objective function.
+    """
+    def __init__(
+        self,
+        scf_objects: list[SCF],
+        objective_index: int,
+        tolerance: float = 1e-6,
+        maxiter: int = 10,
+    ) -> None:
+        self.scf_objects = scf_objects
+        self.objective_index = objective_index
+        self.tolerance = tolerance
+
+    def solve(self) -> tuple[float,bool]:
+        last_val = np.inf
+        for i in range(maxiter):
+            for i, scf in enumerate(self.scf_objects):
+                fun, converged = scf.solve()
+                if i == objective_index:
+                    val = fun 
+            if np.abs(last_val - val) <= tolerance:
+                return val, True
+        return val, False

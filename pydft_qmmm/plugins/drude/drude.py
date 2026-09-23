@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-__all__ = ["DrudeSCF"]
+__all__ = ["IntegratorDrudeSCF"]
 
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import openmm
 
+from pydft_qmmm.calculators import CompositeCalculator
 from pydft_qmmm.calculators import CalculatorPlugin
 from pydft_qmmm.integrators import IntegratorPlugin
 from pydft_qmmm.integrators import Returns
@@ -14,6 +15,7 @@ from pydft_qmmm.utils import load_omm_system
 
 from .drude_data import extract_drude_data
 from .drude_solver import CompositeSCF
+from .drude_solver import DrudeSCF
 from .drude_solver import DrudeCalculator
 
 if TYPE_CHECKING:
@@ -21,7 +23,7 @@ if TYPE_CHECKING:
     from pydft_qmmm.system import System
     from .drude_solver import DrudeSCFInfo
 
-class DrudeSCF(IntegratorPlugin):
+class IntegratorDrudeSCF(IntegratorPlugin):
     def __init__(
         self,
         calculator, 
@@ -45,7 +47,8 @@ class DrudeSCF(IntegratorPlugin):
             integrate: Callable[[bool, bool], Results],
     ) -> Callable[[bool, bool], Results]:
         """Modify the calculate routine to relax Drudes beforehand."""
-        def inner(system: System) -> Returns:
+
+        def case_mm(system: System) -> Returns:
             updated_positions, updated_velocities = integrate(system)
 
             original_positions = system.positions.base.copy()
@@ -56,7 +59,7 @@ class DrudeSCF(IntegratorPlugin):
                 self.drude_data,
             )
 
-            scf = CompositeSCF(
+            scf = DrudeSCF(
                 scf_calculator,
                 max_iterations=self.max_iterations,
                 algorithm=self.algorithm,
@@ -73,10 +76,47 @@ class DrudeSCF(IntegratorPlugin):
             drude_indices = self.drude_data.drude_indices
 
             self.calculator.system.positions[:] = original_positions
-            assert self.calculator.system is system
             updated_velocities[self.drude_data.drude_indices] = 0.0
-            
-
             return updated_positions, updated_velocities
-        return inner
+            
+            
+        def case_qmmm(system: System) -> Returns:
+            updated_positions, updated_velocities = integrate(system)
+
+            original_positions = system.positions.base.copy()
+            self.calculator.system.positions[:] = updated_positions
+            
+            qm_calculator, mm_calculator = get_qm_mm_calculators(self.calculator)
+
+            scf_calculator = DrudeCalculator(
+                self.calculator,
+                self.drude_data,
+            )
+            drudescf = DrudeSCF(
+                scf_calculator,
+                max_iterations=self.max_iterations,
+                algorithm=self.algorithm,
+                force_tolerance=self.force_tolerance,
+            )
+            qmscf = SCFAdapter(qm_calculator)
+
+            scf = CompositeSCF(
+                [qmscf,drudescf]
+                objective_index=0,
+                tolerance=1e-6,
+            )
+
+            result = scf.solve()
+
+            updated_positions = self.calculator.system.positions.base.copy()
+            
+            drude_indices = self.drude_data.drude_indices
+
+            self.calculator.system.positions[:] = original_positions
+            updated_velocities[self.drude_data.drude_indices] = 0.0
+            return updated_positions, updated_velocities
+        
+        if isinstance(self.calculator,CompositeCalculator):
+            return case_qmmm
+        return case_mm
     

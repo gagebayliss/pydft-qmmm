@@ -260,6 +260,7 @@ class OpenMMInterface(MMInterface):
             box: The lattice vectors (:math:`\mathrm{\mathring{A}}`) of
                 the box containing the system.
         """
+        # TODO: fix this?
         pass
 
     def update_subsystems(
