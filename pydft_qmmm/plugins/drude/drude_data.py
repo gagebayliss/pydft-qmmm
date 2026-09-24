@@ -26,8 +26,9 @@ class DrudeData:
         drude_indices: Particle indices for Drude particles.
         parent_indices: Particle indices for each Drude parent.
         charges: Drude particle charges in elementary charge.
-        polarizabilities: Drude polarizabilities in nm^3.
-        force_constants: Harmonic spring constants in kJ/mol/nm^2.
+        polarizabilities: Drude polarizabilities in angstrom^3.
+        force_constants: Isotropic harmonic spring constants in
+            kJ/mol/angstrom^2.
     """
     drude_indices: NDArray[np.int64]
     parent_indices: NDArray[np.int64]
@@ -47,7 +48,7 @@ def extract_drude_data(omm_system: openmm.System) -> DrudeData | None:
         omm_system: The OpenMM system containing one DrudeForce.
 
     Returns:
-        Drude oscillator metadata for fixed-point relaxation.
+        Drude oscillator metadata, or None if no DrudeForce is present.
     """
     drude_forces = [
         force for force in omm_system.getForces()
@@ -55,8 +56,6 @@ def extract_drude_data(omm_system: openmm.System) -> DrudeData | None:
     ]
     if not drude_forces:
         return None
-    # if not drude_forces:
-    #     raise ValueError("The OpenMM system does not contain a DrudeForce.")
     if len(drude_forces) > 1:
         raise ValueError("Expected one DrudeForce in the OpenMM system.")
     drude_force = drude_forces[0]
@@ -65,6 +64,10 @@ def extract_drude_data(omm_system: openmm.System) -> DrudeData | None:
     charges = []
     polarizabilities = []
     force_constants = []
+    coulomb_constant = ONE_4PI_EPS0.value_in_unit(
+        openmm.unit.kilojoule_per_mole * openmm.unit.angstrom
+        / openmm.unit.elementary_charge**2,
+    )
     for i in range(drude_force.getNumParticles()):
         particle, parent, *_rest, charge, polarizability, _a12, _a34 = (
             drude_force.getParticleParameters(i)
@@ -75,10 +78,9 @@ def extract_drude_data(omm_system: openmm.System) -> DrudeData | None:
         parent_indices.append(int(parent))
         charges.append(float(charge_e))
         polarizabilities.append(float(alpha_a3))
-        one_4pi_eps0 = ONE_4PI_EPS0 /\
-            openmm.unit.kilojoule_per_mole / openmm.unit.angstrom *\
-            openmm.unit.elementary_charge**2
-        force_constants.append(float(one_4pi_eps0 * charge_e**2 / alpha_a3))
+        force_constants.append(
+            float(coulomb_constant * charge_e**2 / alpha_a3),
+        )
     return DrudeData(
         drude_indices=np.array(drude_indices, dtype=np.int64),
         parent_indices=np.array(parent_indices, dtype=np.int64),
