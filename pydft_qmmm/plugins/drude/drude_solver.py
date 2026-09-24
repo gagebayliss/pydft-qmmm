@@ -121,6 +121,9 @@ class CompositeSCF:
         tolerance: float = 1e-6,
         maxiter: int = 10,
     ) -> None:
+        if objective_index < -1 or objective_index > len(scf_objects):
+            raise ValueError("...")
+
         self.scf_objects = scf_objects
         self.objective_index = objective_index
         self.tolerance = tolerance
@@ -132,6 +135,6 @@ class CompositeSCF:
                 fun, converged = scf.solve()
                 if i == objective_index:
                     val = fun 
-            if np.abs(last_val - val) <= tolerance:
-                return val, True
+                    if np.abs(last_val - val) <= tolerance:
+                        return val, True
         return val, False
