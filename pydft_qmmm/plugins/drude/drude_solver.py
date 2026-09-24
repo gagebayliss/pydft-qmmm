@@ -154,8 +154,6 @@ class SCF(Protocol):
 
 
 class SCFAdapter:
-    """Adapt a calculator that raises an exception if its SCF fails."""
-
     def __init__(self, calculator: Calculator) -> None:
         self.calculator = calculator
 
@@ -167,9 +165,6 @@ class SCFAdapter:
 
 class CompositeSCF:
     """Cycle through coupled solvers until their objective stabilizes.
-
-    All solvers must also report convergence in the final cycle. This
-    driver does not freeze densities or otherwise change solver behavior.
 
     Args:
         scf_objects: Solvers in evaluation order.
@@ -206,7 +201,7 @@ class CompositeSCF:
                 all_converged = all_converged and converged
                 if index == self.objective_index:
                     value = energy
-            if all_converged and abs(previous_value - value) <= self.tolerance:
-                return value, True
+                    if all_converged and abs(previous_value - value) <= self.tolerance:
+                        return value, True
             previous_value = value
         return value, False

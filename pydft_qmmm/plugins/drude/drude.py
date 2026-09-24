@@ -21,6 +21,7 @@ from pydft_qmmm.utils import load_omm_system
 from .drude_data import extract_drude_data
 from .drude_solver import DrudeCalculator
 from .drude_solver import DrudeSCF
+from .drude_solver import SCFAdapter
 
 if TYPE_CHECKING:
     from pydft_qmmm.integrators import Returns
@@ -97,24 +98,13 @@ class CachedForceCalculator(Calculator):
 
 
 class IntegratorDrudeSCF(IntegratorPlugin):
-    """Relax Drudes with the previous step's QM forces held fixed.
-
-    A calculator plugin snapshots QM forces during the normal force
-    evaluation. The integrator holds that snapshot fixed while relaxing
-    Drudes, without evaluating QM. Only MM forces change during relaxation.
-    This is a lagged-force approximation, not a converged coupled
-    electronic/Drude SCF.
-
-    Register at index 0, outside position constraints and virtual-site
-    updates, so relaxation sees the final nuclear geometry. The normal
-    simulation force calculation updates QM forces after the step.
-
+    """
     Args:
         calculator: MM calculator or a composite containing one MM and
-            one QM calculator. Both must share the integrated system.
+            one QM calculator. Both must share a system.
         forcefield: XML forcefield files used to identify Drude particles.
         force_tolerance: Maximum residual force component in kJ/mol/angstrom.
-        algorithm: BFGS or L-BFGS-B.
+        algorithm: any scipy.optimize algorithm not requiring a Hessian.
         max_iterations: Maximum Drude optimization iterations per step.
         debug_log: Optional file to append optimization diagnostics to.
     """
@@ -126,11 +116,13 @@ class IntegratorDrudeSCF(IntegratorPlugin):
             force_tolerance: float = 0.10,
             algorithm: str = "BFGS",
             max_iterations: int = 50,
+            strict: bool = False,
             debug_log: str | None = None,
     ) -> None:
         self.calculator = calculator
         self.debug_log = debug_log
         self.mm_calculator = calculator
+        self.strict = strict
         self.qm_force_cache: QMForceCache | None = None
         qm_calculator = None
         if isinstance(calculator, CompositeCalculator):
@@ -168,16 +160,31 @@ class IntegratorDrudeSCF(IntegratorPlugin):
             external_potential = CachedForceCalculator(
                 calculator.system, self.qm_force_cache,
             )
-        self.scf = DrudeSCF(
-            DrudeCalculator(
-                self.mm_calculator, self.drude_data, external_potential,
-            ),
-            max_iterations=max_iterations,
-            algorithm=algorithm,
-            force_tolerance=force_tolerance,
-        )
-        if qm_calculator is not None:
+            drude_scf = DrudeSCF(
+                DrudeCalculator(
+                    self.mm_calculator, self.drude_data, external_potential,
+                ),
+                max_iterations=max_iterations,
+                algorithm=algorithm,
+                force_tolerance=force_tolerance,
+            )
+            qm_scf = SCFAdapter(qm_calculator)
+            self.scf = CompositeSCF(
+               [qm_scf, drude_scf],
+               objective_index=0,
+               tolerance=1e-6,
+               maxiter=10,
+            )
             qm_calculator.register_plugin(self.qm_force_cache)
+        else:
+            self.scf = DrudeSCF(
+                DrudeCalculator(
+                    self.mm_calculator, self.drude_data,
+                ),
+                max_iterations=max_iterations,
+                algorithm=algorithm,
+                force_tolerance=force_tolerance,
+            )
 
     def _modify_integrate(
             self,
@@ -191,24 +198,21 @@ class IntegratorDrudeSCF(IntegratorPlugin):
                 )
             positions, velocities = integrate(system)
             original_positions = system.positions.base.copy()
-            try:
-                system.positions[:] = positions
-                energy, converged = self.scf.solve()
-                if self.debug_log is not None:
-                    with open(self.debug_log, "a") as log:
-                        log.write(
-                            f"Energy: {energy}; converged: {converged}\n",
-                        )
-                        log.write(f"{self.scf.result}\n")
-                if not converged:
-                    raise RuntimeError(
-                        "Drude SCF did not reach the force tolerance. "
-                        "Inspect the optimizer result in plugin.scf.result.",
+            system.positions[:] = positions
+            
+            energy, converged = self.scf.solve()
+            if self.debug_log is not None:
+                with open(self.debug_log, "a") as log:
+                    log.write(
+                        f"Energy: {energy}; converged: {converged}\n",
                     )
-                positions = system.positions.base.copy()
-            finally:
-                # Notify interfaces when restoring, including on failure.
-                system.positions[:] = original_positions
+                    log.write(f"{self.scf.result}\n")
+            if not converged and self.strict:
+                raise RuntimeError(
+                    "Drude SCF did not reach the force tolerance."
+                )
+            positions = system.positions.base.copy()
+
             velocities[self.drude_data.drude_indices] = 0.0
             return positions, velocities
         return inner
