@@ -21,6 +21,7 @@ from pydft_qmmm.utils import load_omm_system
 from .drude_data import extract_drude_data
 from .drude_solver import DrudeCalculator
 from .drude_solver import DrudeSCF
+from .drude_solver import CompositeSCF
 from .drude_solver import SCFAdapter
 
 if TYPE_CHECKING:
@@ -206,7 +207,8 @@ class IntegratorDrudeSCF(IntegratorPlugin):
                     log.write(
                         f"Energy: {energy}; converged: {converged}\n",
                     )
-                    log.write(f"{self.scf.result}\n")
+                    if getattr(self.scf,"result",None):
+                        log.write(f"{self.scf.result}\n")
             if not converged and self.strict:
                 raise RuntimeError(
                     "Drude SCF did not reach the force tolerance."

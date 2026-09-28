@@ -109,9 +109,11 @@ class Simulation(Loggable):
         """
         self.calculate_energy_forces()
         for i in range(steps):
+
             new_positions, new_velocities = self.integrator.integrate(
                 self.system,
             )
+
             self.system.positions = new_positions
             self.system.velocities = new_velocities
             unwrapped_positions = self.system.positions.base + self._offset
@@ -124,6 +126,7 @@ class Simulation(Loggable):
                 },
             )
             self._frame += 1
+
             self.calculate_energy_forces()
 
     def calculate_energy_forces(self) -> None:

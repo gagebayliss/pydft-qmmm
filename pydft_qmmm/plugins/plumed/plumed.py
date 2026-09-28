@@ -34,7 +34,7 @@ class PLUMED(CalculatorPlugin):
             self,
             input_commands: str,
             log_file: str,
-            arbitrary_cvs: dict[str,CollectiveVariable],
+            arbitrary_cvs: dict[str,CollectiveVariable] | None = None,
     ) -> None:
         try:
             import plumed
@@ -110,22 +110,24 @@ class PLUMED(CalculatorPlugin):
             virial = np.zeros((3, 3))
             self.plumed.cmd("setVirial", virial)
 
-            cv_values = np.zeros((len(self.arbitrary_cvs),))
-            cv_forces = np.zeros((len(self.arbitrary_cvs),))
-            for i, (cv_name, cv) in enumerate(self.arbitrary_cvs.items()):
-                self._bypass_plumed = True
-                cv_values[i] = cv.get_scalar_cv(self.calculator,results)
-                self._bypass_plumed = False
-                self.plumed.cmd(f"setExtraCV {cv_name}", cv_values[i:i+1])
-                self.plumed.cmd(f"setExtraCVForce {cv_name}", cv_forces[i:i+1])
+            if self.arbitrary_cvs is not None:
+                cv_values = np.zeros((len(self.arbitrary_cvs),))
+                cv_forces = np.zeros((len(self.arbitrary_cvs),))
+                for i, (cv_name, cv) in enumerate(self.arbitrary_cvs.items()):
+                    self._bypass_plumed = True
+                    cv_values[i] = cv.get_scalar_cv(self.calculator,results)
+                    self._bypass_plumed = False
+                    self.plumed.cmd(f"setExtraCV {cv_name}", cv_values[i:i+1])
+                    self.plumed.cmd(f"setExtraCVForce {cv_name}", cv_forces[i:i+1])
 
             self.plumed.cmd("prepareCalc")
             self.plumed.cmd("performCalc")
             biased_energy = np.zeros((1,))
             self.plumed.cmd("getBias", biased_energy)
 
-            for i, (cv_name, cv) in enumerate(self.arbitrary_cvs.items()):
-                biased_forces += cv_forces[i] * cv.chain_rule()
+            if self.arbitrary_cvs is not None:
+                for i, (cv_name, cv) in enumerate(self.arbitrary_cvs.items()):
+                    biased_forces += cv_forces[i] * cv.chain_rule()
 
             results.energy += biased_energy[0]
             results.forces += biased_forces

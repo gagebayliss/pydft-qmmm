@@ -18,17 +18,10 @@ if TYPE_CHECKING:
 class DrudeCalculator:
     """Expose Drude coordinates as an energy minimization problem.
 
-    The wrapped calculator supplies the base energy and forces. An
-    optional external calculator supplies an additional contribution
-    through the same interface. Coordinates are in angstrom and energies
-    in kJ/mol. Neither calculator is required to use a particular backend.
-
     Args:
         calculator: Calculator for the base energy and forces.
         drude_data: Metadata identifying the coordinates to optimize.
-        external_potential: Optional calculator for external energy and
-            forces, evaluated at each trial geometry. A cached-force
-            calculator can supply a fixed QM field without QM evaluations.
+        external_potential: Optional calculator for QM forces, etc. 
     """
 
     def __init__(
@@ -68,13 +61,9 @@ class DrudeCalculator:
     @state.setter
     def state(self, coordinates: NDArray[np.float64]) -> None:
         coordinates = np.asarray(coordinates, dtype=float)
-        if coordinates.size != 3 * len(self.indices):
-            raise ValueError("Expected three coordinates per Drude particle.")
-        # Write through the observed array to update the calculator caches.
         self.calculator.system.positions[self.indices] = coordinates.reshape(
             -1, 3,
         )
-
 
 class DrudeSCF:
     """Minimize energy with respect to Drude positions at fixed nuclei.
@@ -82,7 +71,8 @@ class DrudeSCF:
     Args:
         calculator: Energy and gradient adapter for the Drude coordinates.
         max_iterations: Maximum number of optimizer iterations.
-        algorithm: Either BFGS or L-BFGS-B.
+        algorithm: Any scipy.optimize algorithm accepting a gradient and
+            not requiring a Hessian.
         force_tolerance: Maximum absolute force component in kJ/mol/angstrom.
 
     Attributes:
@@ -100,8 +90,6 @@ class DrudeSCF:
             raise ValueError("max_iterations must be positive.")
         if not np.isfinite(force_tolerance) or force_tolerance <= 0:
             raise ValueError("force_tolerance must be finite and positive.")
-        if algorithm not in {"BFGS", "L-BFGS-B"}:
-            raise ValueError("algorithm must be 'BFGS' or 'L-BFGS-B'.")
         self.calculator = calculator
         self.max_iterations = max_iterations
         self.algorithm = algorithm
@@ -109,13 +97,7 @@ class DrudeSCF:
         self.result: OptimizeResult | None = None
 
     def solve(self) -> tuple[float, bool]:
-        """Leave Drudes at the accepted minimum and report force convergence.
-
-        Optimizer success alone is insufficient: energy stagnation may
-        terminate minimization before the force tolerance is satisfied.
-        """
         from scipy.optimize import minimize
-
         if not len(self.calculator.indices):
             energy, _ = self.calculator.calculate(self.calculator.state)
             return energy, True
@@ -125,7 +107,6 @@ class DrudeSCF:
             "maxiter": self.max_iterations,
         }
         if self.algorithm == "L-BFGS-B":
-            # Use forces, rather than relative energy changes, to stop.
             options["ftol"] = 0.0
         self.result = minimize(
             self.calculator.calculate,
@@ -134,8 +115,6 @@ class DrudeSCF:
             method=self.algorithm,
             options=options,
         )
-        # A line search can finish at a rejected trial point. Restore and
-        # evaluate the accepted coordinates so all calculator state agrees.
         energy, gradient = self.calculator.calculate(self.result.x)
         converged = bool(
             np.isfinite(energy)
@@ -156,9 +135,9 @@ class SCF(Protocol):
 class SCFAdapter:
     def __init__(self, calculator: Calculator) -> None:
         self.calculator = calculator
+        self.result = None
 
     def solve(self) -> tuple[float, bool]:
-        """Evaluate the calculator and report a finite energy as success."""
         result = self.calculator.calculate()
         return result.energy, bool(np.isfinite(result.energy))
 
