@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from typing import TypeAlias
 
 import numpy as np
+import cupy as cp
 from numpy.typing import NDArray
 
 from pydft_qmmm.utils import pluggable_method
@@ -80,15 +81,14 @@ class Integrator(ABC):
             The kinetic energy (:math:`\mathrm{kJ\;mol^{-1}}`) of the
             system.
         """
-        masses = system.masses.reshape(-1, 1)
-        velocities = (
-            system.velocities
-            + (
-                0.5*self.timestep
-                * system.forces*(10**-4)/masses
-            )
-        )
-        kinetic_energy = np.sum(0.5*masses*(velocities)**2) * (10**4)
+        masses = cp.asarray(system.masses.reshape(-1, 1))
+        mask = masses[:,0] != 0
+        delta_v = cp.zeros_like(system.velocities)
+        forces = cp.asarray(system.forces.base)
+        delta_v[mask] = 0.5*self.timestep* forces[mask,:]*(10**-4)/\
+                        masses[mask,:]
+        velocities = cp.asarray(system.velocities) + delta_v
+        kinetic_energy = cp.sum(0.5*masses*(velocities)**2) * (10**4)
         return kinetic_energy
 
     def register_plugin(

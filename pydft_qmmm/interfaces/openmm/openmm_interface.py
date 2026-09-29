@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from dataclasses import field
 import re
 from typing import TYPE_CHECKING
+import time
 
 import numpy as np
 import openmm
@@ -249,7 +250,9 @@ class OpenMMInterface(MMInterface):
             positions: The positions (:math:`\mathrm{\mathring{A}}`) of
                 the atoms within the system.
         """
-        omm_pos = [openmm.Vec3(*x)*openmm.unit.angstrom for x in positions]
+#       omm_pos = [openmm.Vec3(*x)*openmm.unit.angstrom for x in positions]
+        omm_pos = positions * 0.1 # angstrom to nm
+        # 1000 times faster (literally) if we pass a numpy array
         self.base_context.setPositions(omm_pos)
         self.aux_context.setPositions(omm_pos)
 
@@ -332,19 +335,31 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
         Returns:
             The energy (:math:`\mathrm{kJ\;mol^{-1}}`) of the system.
         """
-        base_state = openmm_utils._generate_state(self.base_context)
+        time_0 = time.perf_counter()
+        base_state = openmm_utils._generate_state(
+                self.base_context,
+                get_energy = True,
+                get_forces = True,
+            )
+        self._base_state_cache = base_state
+        time_1 = time.perf_counter()
         energy = (
-            base_state.getPotentialEnergy()
-            / openmm.unit.kilojoule_per_mole
+            base_state.getPotentialEnergy()._value
+#             / openmm.unit.kilojoule_per_mole
         )
         if self.aux_energy_group:
             aux_state = openmm_utils._generate_state(
                 self.aux_context, groups=self.aux_energy_group,
             )
             energy += (
-                aux_state.getPotentialEnergy()
-                / openmm.unit.kilojoule_per_mole
+                aux_state.getPotentialEnergy()._value
+#                 / openmm.unit.kilojoule_per_mole
             )
+        time_2 = time.perf_counter()
+#         print("get energy")
+#         print(f"get context {time_1 - time_0:.5f}")
+#         print(f"everything else {time_2 - time_1:.5f}")
+
         return energy
 
     def compute_forces(self) -> NDArray[np.float64]:
@@ -355,31 +370,52 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
             (:math:`\mathrm{kJ\;mol^{-1}\;\mathring{A}^{-1}}`) acting
             on atoms in the system.
         """
-        base_state = openmm_utils._generate_state(self.base_context)
+        time_0 = time.perf_counter()
+        # practically, this function is never called except after
+        # compute_energy
+
+        base_state = self._base_state_cache
+#         openmm_utils._generate_state(
+#                 self.base_context,
+#                 get_energy = False,
+#                 get_forces = True,
+#             )
+        time_05 = time.perf_counter()
         forces = (
-            self.base_force_mask * base_state.getForces(asNumpy=True)
-            / openmm.unit.kilojoule_per_mole * openmm.unit.angstrom
+            self.base_force_mask * base_state.getForces(asNumpy=True)._value
+            * 0.1
+#             / openmm.unit.kilojoule_per_mole * openmm.unit.angstrom
         )
+        time_1 = time.perf_counter()
         if self.aux_energy_group:
             aux_state = openmm_utils._generate_state(
                 self.aux_context, self.aux_energy_group,
             )
             forces += (
                 self.aux_energy_group_force_mask
-                * aux_state.getForces(asNumpy=True)
-                / openmm.unit.kilojoule_per_mole
-                * openmm.unit.angstrom
+                * aux_state.getForces(asNumpy=True).value
+                * 0.1
+#                 / openmm.unit.kilojoule_per_mole
+#                 * openmm.unit.angstrom
             )
+        time_2 = time.perf_counter()
         if self.aux_forces_group:
             aux_state = openmm_utils._generate_state(
                 self.aux_context, self.aux_forces_group,
             )
             forces += (
                 self.aux_forces_group_force_mask
-                * aux_state.getForces(asNumpy=True)
-                / openmm.unit.kilojoule_per_mole
-                * openmm.unit.angstrom
+                * aux_state.getForces(asNumpy=True)._value
+                * 0.1
+#                 / openmm.unit.kilojoule_per_mole
+#                 * openmm.unit.angstrom
             )
+        time_3 = time.perf_counter()
+#         print("get forces")
+#         print(f"get context {time_05 - time_0:.5f}")
+#         print(f"base forces {time_1 - time_05:.5f}")
+#         print(f"aux energy {time_2 - time_1:.5f}")
+#         print(f"aux forces {time_3 - time_2:.5f}")
         return forces
 
     def compute_components(self) -> dict[str, float]:

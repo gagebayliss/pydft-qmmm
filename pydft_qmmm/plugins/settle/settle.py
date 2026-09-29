@@ -9,6 +9,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 import numpy as np
+import cupy as cp
 from numpy.typing import NDArray
 
 from .settle_utils import settle_positions
@@ -93,10 +94,10 @@ class SETTLE(IntegratorPlugin):
         )
         residue_map = dict(residue_set)
         ep_lp_indices = frozenset(select("element Ep Lp"))
-        hoh_residues = [
+        hoh_residues = cp.array([
             [j for j in sorted(residue_map[i]) if j not in ep_lp_indices]
             for i in residue_indices
-        ]
+        ])
         if any([len(residue) != 3 for residue in hoh_residues]):
             raise ValueError("Some SETTLE residues do not have 3 atoms")
         return hoh_residues
@@ -121,20 +122,26 @@ class SETTLE(IntegratorPlugin):
                 frozenset(system.residue_map.items()),
                 system.select,
             )
-            if residues:
+            if residues.size > 0:
+                positions_i = cp.asarray(system.positions)
+                positions_f = cp.asarray(positions)
+                masses = cp.asarray(system.masses)
                 positions = settle_positions(
                     residues,
-                    system.positions,
-                    positions,
-                    system.masses,
+                    positions_i,
+                    positions_f,
+                    masses,
+#                     system.positions,
+#                     positions,
+#                     system.masses,
                     self.oh_distance,
                     self.hh_distance,
                 )
-                velocities[residues, :] = (
+                velocities[residues, :] = cp.asnumpy(
                     (
-                        positions[residues, :]
-                        - system.positions[residues, :]
-                    ) / self.integrator.timestep
+                        positions_f[residues, :]
+                        - positions_i[residues, :]
+                    ) /  self.integrator.timestep
                 )
             return positions, velocities
         return inner
@@ -154,28 +161,29 @@ class SETTLE(IntegratorPlugin):
             algorithm to velocities.
         """
         def inner(system: System) -> float:
-            masses = system.masses.reshape(-1, 1)
-            velocities = (
-                system.velocities
-                + (
-                    0.5*self.integrator.timestep
-                    * system.forces*(10**-4)/masses
-                )
-            )
+            timestep = self.integrator.timestep
+            masses = cp.asarray(system.masses.reshape(-1, 1))
+            delta_v = cp.zeros_like(system.velocities.base)
+            mask = masses[:,0] != 0
+            forces = cp.asarray(system.forces.base)
+            delta_v[mask] = 0.5*timestep*forces[mask,:]*(10**-4) /\
+                            masses[mask,:]
+            velocities = cp.asarray(system.velocities) + delta_v
             residues = self._get_hoh_residues(
                 tuple(system.residues),
                 frozenset(system.residue_map.items()),
                 system.select,
             )
-            if residues:
+            positions = cp.asarray(system.positions.base)
+            if residues.size > 0:
                 velocities = settle_velocities(
                     residues,
                     system.positions,
                     velocities,
-                    system.masses,
+                    masses,
                 )
             kinetic_energy = (
-                np.sum(0.5*masses*(velocities)**2)
+                cp.sum(0.5*masses*(velocities)**2)
                 * (10**4)
             )
             return kinetic_energy

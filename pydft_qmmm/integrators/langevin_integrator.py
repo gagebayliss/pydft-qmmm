@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
+from numba import njit
 
 from pydft_qmmm.utils import KB
 from pydft_qmmm.utils import pluggable_method

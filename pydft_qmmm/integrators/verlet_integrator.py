@@ -7,6 +7,10 @@ __all__ = ["VerletIntegrator"]
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import numpy as np
+import cupy as cp
+from numba import njit
+
 from pydft_qmmm.utils import pluggable_method
 
 from .integrator import Integrator
@@ -45,12 +49,42 @@ class VerletIntegrator(Integrator):
             forces (:math:`\mathrm{kJ\;mol^{-1}\;\mathring{A}^{-1}}`)
             and existing positions and velocities of the system.
         """
-        masses = system.masses.reshape((-1, 1))
-        momenta = system.velocities * masses
-        momenta = momenta + self.timestep * system.forces*(10**-4)
-        final_positions = (
-            system.positions
-            + self.timestep*momenta/masses
+#         positions = np.asarray(system.positions)
+#         velocities = np.asarray(system.velocities)
+#         forces = np.asarray(system.forces)
+#         masses = np.asarray(system.masses.reshape((-1, 1)))
+#         timestep = self.timestep
+        positions = cp.asarray(system.positions)
+        velocities = cp.asarray(system.velocities)
+        forces = cp.asarray(system.forces)
+        masses = cp.asarray(system.masses.reshape((-1, 1)))
+        timestep = self.timestep
+
+        momenta = velocities * masses
+        momenta = momenta + timestep * forces*(10**-4)
+
+        final_velocities = cp.zeros_like(velocities)
+        mask = masses[:, 0] != 0
+        final_velocities[mask,:] = momenta[mask,:] / masses[mask,:]
+        final_positions = positions + timestep * final_velocities
+        return (
+            cp.asnumpy(final_positions),
+            cp.asnumpy(final_velocities)
         )
-        final_velocities = momenta/masses
-        return final_positions, final_velocities
+
+#         final_positions,final_velocities = integrator_kernel(
+#             positions,velocities,forces,masses,timestep,
+#         )
+#         return final_positions, final_velocities
+
+
+@njit
+def integrator_kernel(positions,velocities,forces,masses,timestep):
+    momenta = velocities * masses
+    momenta = momenta + timestep * forces*(10**-4)
+    final_positions = (
+        positions
+        + timestep*momenta/masses
+    )
+    final_velocities = momenta/masses
+    return final_positions, final_velocities
