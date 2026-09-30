@@ -71,6 +71,7 @@ class OpenMMInterface(MMInterface):
         self.system.positions.register_notifier(self.update_positions)
         self.system.box.register_notifier(self.update_box)
         self.system.subsystems.register_notifier(self.update_subsystems)
+        self._last_charges: NDArray[np.float64] | None = None
 
     def zero_intramolecular(self, atoms: frozenset[int]) -> None:
         """Remove intra-molecular interactions for the specified atoms.
@@ -222,16 +223,42 @@ class OpenMMInterface(MMInterface):
         Args:
             charges: The partial charges (:math:`e`) of the atoms.
         """
+        print("////////////////////////////////////////")
+        time_0 = time.perf_counter()
         nonbonded_forces = [
             force for force in self.base_context.getSystem().getForces()
             if isinstance(force, openmm.NonbondedForce)
         ]
+        time_1 = time.perf_counter()
+        print(f"load nonbonded forces: {time_1 - time_0:.5f}")
+        print("len(nonbonded_forces)")
+        print(len(nonbonded_forces))
+        if self._last_charges is not None:
+            charge_indices = np.where(~np.isclose(charges,self._last_charges))[0]
+        else:
+            charge_indices = np.asarray([i for i in range(0,len(charges))])
+
+        print(charge_indices)
+
         for force in nonbonded_forces:
+            time_00 = time.perf_counter()
             openmm_utils._update_exceptions(force, charges)
-            for i, charge in enumerate(charges):
+            time_01 = time.perf_counter()
+            for i in charge_indices:
+                i = int(i)
                 _, sigma, epsilon = force.getParticleParameters(i)
+                charge = charges[i]
                 force.setParticleParameters(i, charge, sigma, epsilon)
+            time_02 = time.perf_counter()
             force.updateParametersInContext(self.base_context)
+            time_03 = time.perf_counter()
+            print("per one iteration:")
+            print(f"exceptions {time_01 - time_00 }")
+            print(f"update particle parameters {time_02 - time_01 }")
+            print(f"set parameters in context {time_03 - time_02 }")
+
+        time_2 = time.perf_counter()
+        print(f"iterate over charges: {time_2 - time_1:.5f}")
         custom_nonbonded_forces = [
             force for force in self.aux_context.getSystem().getForces()
             if isinstance(force, openmm.CustomNonbondedForce)
@@ -242,6 +269,10 @@ class OpenMMInterface(MMInterface):
                     _, n = force.getParticleParameters(i)
                     force.setParticleParameters(i, [charge, n])
                 force.updateParametersInContext(self.aux_context)
+        self._last_charges = charges.copy()
+        time_3 = time.perf_counter()
+        print(f"iterate over aux context: {time_3 - time_2:.5f}")
+        print("////////////////////////////////////////")
 
     def update_positions(self, positions: NDArray[np.float64]) -> None:
         r"""Set the atomic positions used by OpenMM.

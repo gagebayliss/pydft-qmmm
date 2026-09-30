@@ -4,6 +4,8 @@ __all__ = ["DeltaECV"]
 
 from typing import TYPE_CHECKING
 
+import time
+
 import numpy as np
 
 from pydft_qmmm.hamiltonians import MMHamiltonian
@@ -42,7 +44,6 @@ class DeltaECV(CollectiveVariable):
         self._state_names = [key.strip() for key in scheme.split("-")]
         self.forcefields = states_forcefield
         self.charge_multiplicity_tuples = states_charge_multiplicity 
-
         self._cv_gradient = None
         self._aux_calculators = {}
         self._charge_arrays = {}
@@ -61,6 +62,7 @@ class DeltaECV(CollectiveVariable):
         Returns:
             The scalar value of the collective variable.
         """
+        time_0 = time.perf_counter()
         system = calculator.system
         
         original_charges = system.charges.base.copy()
@@ -70,8 +72,11 @@ class DeltaECV(CollectiveVariable):
         forces = {}
 
         indices = [i for i in sorted(system.select(self.query))]
+        time_1 = time.perf_counter()
+        print(f" copying system arrays and sorting indices: {time_1 - time_0:.5f}")
 
         for state_name in self._state_names:
+            time_00 = time.perf_counter()
             if self._aux_calculators.get(state_name,None) is None:
                 self._aux_calculators[state_name] = self._build_aux_calculator(
                         system,
@@ -80,25 +85,37 @@ class DeltaECV(CollectiveVariable):
             if self._charge_arrays.get(state_name,None) is None:
                 self._charge_arrays[state_name] = self._aux_calculators[state_name]\
                     .system.charges.base.copy()
-
-        
+            time_01 = time.perf_counter()
+            print(f"build aux calculators: {time_01 - time_00:.5f}")
+            
+            
             system.charges[indices] = self._charge_arrays[state_name]
+            time_02 = time.perf_counter()
+            print(f"update system charges: {time_02 - time_01:.5f}")
+
             if np.allclose(system.charges.base, original_charges, atol=1e-8):
+                print("charges recognized, not... redoing calculation")
                 result = results
             else:
                 result = calculator.calculate()
-
+    
+            time_03 = time.perf_counter()
             self._aux_calculators[state_name].system.positions[:] =\
                                         calculator.system.positions[indices]
+            time_04 = time.perf_counter()
+            print(f"update positions: {time_04 - time_03:.5f}")
+
             intra_result = self._aux_calculators[state_name].calculate()
 
             energies[state_name] = result.energy - intra_result.energy
             forces[state_name] = result.forces.copy() 
             forces[state_name][indices] = forces[state_name][indices]\
                                           - intra_result.forces
-
+            
             system.charges[:] = original_charges
             system.positions[:] = original_positions
+            time_05 = time.perf_counter()
+            print(f"update positions and charges: {time_05-time_04:.5f}")
 
         delta_E = energies[self._state_names[0]] - energies[self._state_names[1]]
 
@@ -106,6 +123,8 @@ class DeltaECV(CollectiveVariable):
         self._cv_gradient = -(forces[self._state_names[0]]\
                                 - forces[self._state_names[1]])
 
+        time_final = time.perf_counter()
+        print()
         return delta_E
 
     def chain_rule(
