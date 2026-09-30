@@ -45,6 +45,7 @@ class SETTLE(IntegratorPlugin):
         self.query = "(" + query + ") and not subsystem I"
         self.oh_distance = oh_distance
         self.hh_distance = hh_distance
+        self._residues = None
 
     def constrain_velocities(self, system: System) -> NDArray[np.float64]:
         """Apply the SETTLE algorithm to system velocities.
@@ -56,13 +57,14 @@ class SETTLE(IntegratorPlugin):
             New velocities which result from the application of the
             SETTLE algorithm to system velocities.
         """
-        residues = self._get_hoh_residues(
-            tuple(system.residues),
-            frozenset(system.residue_map.items()),
-            system.select,
-        )
+        if self._residues is None:
+            self._residues = self._get_hoh_residues(
+                tuple(system.residues),
+                frozenset(system.residue_map.items()),
+                system.select,
+            )
         velocities = settle_velocities(
-            residues,
+            self._residues,
             system.positions,
             system.velocities,
             system.masses,
@@ -94,10 +96,10 @@ class SETTLE(IntegratorPlugin):
         )
         residue_map = dict(residue_set)
         ep_lp_indices = frozenset(select("element Ep Lp"))
-        hoh_residues = cp.array([
+        hoh_residues = [
             [j for j in sorted(residue_map[i]) if j not in ep_lp_indices]
             for i in residue_indices
-        ])
+        ]
         if any([len(residue) != 3 for residue in hoh_residues]):
             raise ValueError("Some SETTLE residues do not have 3 atoms")
         return hoh_residues
@@ -117,30 +119,28 @@ class SETTLE(IntegratorPlugin):
         """
         def inner(system: System) -> Returns:
             positions, velocities = integrate(system)
-            residues = self._get_hoh_residues(
-                tuple(system.residues),
-                frozenset(system.residue_map.items()),
-                system.select,
-            )
-            if residues.size > 0:
+            if self._residues is None:
+                self._residues = self._get_hoh_residues(
+                    tuple(system.residues),
+                    frozenset(system.residue_map.items()),
+                    system.select,
+                )
+            if self._residues:
                 positions_i = cp.asarray(system.positions)
                 positions_f = cp.asarray(positions)
                 masses = cp.asarray(system.masses)
                 positions = settle_positions(
-                    residues,
+                    self._residues,
                     positions_i,
                     positions_f,
                     masses,
-#                     system.positions,
-#                     positions,
-#                     system.masses,
                     self.oh_distance,
                     self.hh_distance,
                 )
-                velocities[residues, :] = cp.asnumpy(
+                velocities[self._residues, :] = cp.asnumpy(
                     (
-                        positions_f[residues, :]
-                        - positions_i[residues, :]
+                        positions_f[self._residues, :]
+                        - positions_i[self._residues, :]
                     ) /  self.integrator.timestep
                 )
             return positions, velocities
@@ -169,15 +169,16 @@ class SETTLE(IntegratorPlugin):
             delta_v[mask] = 0.5*timestep*forces[mask,:]*(10**-4) /\
                             masses[mask,:]
             velocities = cp.asarray(system.velocities) + delta_v
-            residues = self._get_hoh_residues(
-                tuple(system.residues),
-                frozenset(system.residue_map.items()),
-                system.select,
-            )
+            if self._residues is None:
+                self._residues = self._get_hoh_residues(
+                    tuple(system.residues),
+                    frozenset(system.residue_map.items()),
+                    system.select,
+                )
             positions = cp.asarray(system.positions.base)
-            if residues.size > 0:
+            if self._residues:
                 velocities = settle_velocities(
-                    residues,
+                    self._residues,
                     system.positions,
                     velocities,
                     masses,

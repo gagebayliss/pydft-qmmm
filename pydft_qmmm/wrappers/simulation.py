@@ -84,7 +84,7 @@ class Simulation(Loggable):
         if system.box.any():
             pass
 #             self.calculator.register_plugin(CalculatorWrap(), 0)
-#             integrator.register_plugin(IntegratorWrap(), 0)
+            integrator.register_plugin(IntegratorWrap(), 0)
         if system.select("subsystem I"):
             pass
             self.calculator.register_plugin(CalculatorCenter(), 0)
@@ -104,11 +104,11 @@ class Simulation(Loggable):
             steps: The number of steps to take.
         """
         #### timing ####
-#         with open('pydft_timing.csv',mode='a') as file:
-# 
-#             headers = ["step","step_time","integrate_time","write_time","log_time","calculate_time"]
-#             writer = csv.writer(file)
-#             writer.writerow(headers)
+        with open('pydft_timing.csv',mode='a') as file:
+
+            headers = ["step","step_time","integrate_time","write_time","log_time","calculate_time"]
+            writer = csv.writer(file)
+            writer.writerow(headers)
         ################
 
         self.calculate_energy_forces()
@@ -147,17 +147,17 @@ class Simulation(Loggable):
             self.calculate_energy_forces()
 
             #### timing ####
-#             calculate_time = time.perf_counter()
-# 
-#             step_delta_t = calculate_time - start_time
-#             integrate_delta_t = integrate_time - start_time
-#             write_delta_t = write_time - integrate_time 
-#             log_delta_t = log_time - write_time 
-#             calculate_delta_t = calculate_time - log_time
-#             data = [i,step_delta_t,integrate_delta_t,write_delta_t,log_delta_t,calculate_delta_t]
-#             with open('pydft_timing.csv',mode='a') as file:
-#                 writer = csv.writer(file)
-#                 writer.writerow(data)
+            calculate_time = time.perf_counter()
+
+            step_delta_t = calculate_time - start_time
+            integrate_delta_t = integrate_time - start_time
+            write_delta_t = write_time - integrate_time 
+            log_delta_t = log_time - write_time 
+            calculate_delta_t = calculate_time - log_time
+            data = [i,step_delta_t,integrate_delta_t,write_delta_t,log_delta_t,calculate_delta_t]
+            with open('pydft_timing.csv',mode='a') as file:
+                writer = csv.writer(file)
+                writer.writerow(data)
             ################
 
 
@@ -169,7 +169,7 @@ class Simulation(Loggable):
         time_0 = time.perf_counter()
         ##############
 
-#         temp = self.system.positions.base.copy()
+        temp = self.system.positions.base.copy()
         results = self.calculator.calculate(True,False)
 
         #### time ####
@@ -195,7 +195,7 @@ class Simulation(Loggable):
 
             self.energy = energy
 
-#             self._offset += temp - self.system.positions.base
+            self._offset += temp - self.system.positions.base
             logger.info("", extra={"frame": self._frame, "energy": self.energy})
 
         time_2 = time.perf_counter()

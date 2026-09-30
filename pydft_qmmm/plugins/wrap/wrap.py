@@ -127,6 +127,11 @@ def _improved_wrap_positions(
 class CalculatorWrap(CalculatorPlugin):
     """Wrap positions before performing a calculation.
     """
+    def __init__(self,wrap_frequency: int = 20):
+        super().__init__()
+        self.residue_indices = None
+        self._step = 0
+        self._wrap_frequency = wrap_frequency
 
     def _modify_calculate(
             self,
@@ -145,10 +150,12 @@ class CalculatorWrap(CalculatorPlugin):
                 return_forces: bool = True,
                 return_components: bool = True,
         ) -> Results:
-            self.calculator.system.positions[:] = _improved_wrap_positions(
-                self.calculator.system.positions,
-                self.calculator.system,
-            )
+            if self._step % self._wrap_frequency == 0:
+                self.calculator.system.positions[:] = _improved_wrap_positions(
+                    self.calculator.system.positions,
+                    self.calculator.system,
+                )
+            self._step += 1
             results = calculate(return_forces, return_components)
             return results
         return inner
@@ -157,9 +164,11 @@ class CalculatorWrap(CalculatorPlugin):
 class IntegratorWrap(IntegratorPlugin):
     """Wrap positions after performing an integration.
     """
-    def __init__(self):
+    def __init__(self,wrap_frequency: int = 20):
         super().__init__()
         self.residue_indices = None
+        self._step = 0
+        self._wrap_frequency = wrap_frequency
 
     def _modify_integrate(
             self,
@@ -176,6 +185,8 @@ class IntegratorWrap(IntegratorPlugin):
         """
         def inner(system: System) -> Returns:
             positions, velocities = integrate(system)
-            positions, self.residue_indices = _improved_wrap_positions(positions, system,self.residue_indices)
+            if self._step % self._wrap_frequency == 0:
+                positions, self.residue_indices = _improved_wrap_positions(positions, system,self.residue_indices)
+            self._step += 1
             return positions, velocities
         return inner
