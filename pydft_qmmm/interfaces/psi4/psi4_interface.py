@@ -6,6 +6,7 @@ and forces.
 """
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from dataclasses import field
 from typing import TYPE_CHECKING
@@ -21,6 +22,7 @@ from pydft_qmmm.utils import system_cache
 from pydft_qmmm.utils import virtual_sites
 
 if TYPE_CHECKING:
+    from typing import Any
     from numpy.typing import NDArray
     from pydft_qmmm.potentials import ElectronicPotential
     from pydft_qmmm import System  # noqa: F401
@@ -61,6 +63,15 @@ class Psi4Interface(QMInterface):
         default_factory=lambda: [0],
         init=False,
     )
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> Psi4Interface:
+        """Copy settings and potentials, rebuilding system-bound caches."""
+        copied = type(self).__new__(type(self))
+        memo[id(self)] = copied
+        for name, value in vars(self).items():
+            if not name.startswith("__wrapped_"):
+                object.__setattr__(copied, name, deepcopy(value, memo))
+        return copied
 
     def add_electronic_potential(self, potential: ElectronicPotential) -> None:
         """Add an electronic potential to apply before calculations.

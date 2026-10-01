@@ -2,17 +2,19 @@ from __future__ import annotations
 
 __all__ = ["DeltaECV"]
 
+from copy import deepcopy
 from typing import TYPE_CHECKING
-
-import time
 
 import numpy as np
 
 from pydft_qmmm.hamiltonians import MMHamiltonian
 
 from .collective_variable import CollectiveVariable
+from .plumed import PLUMED
+from pydft_qmmm.calculators import CompositeCalculator
 
 if TYPE_CHECKING:
+    from typing import Any
     from pydft_qmmm.calculators import Calculator
     from pydft_qmmm.calculators import Results
     from pydft_qmmm.system import System
@@ -21,6 +23,9 @@ if TYPE_CHECKING:
 
 class DeltaECV(CollectiveVariable):
     """The generalized solvation collective variable class.
+
+    Charge-state calculators are initialized once. The driving system
+    must keep its charges and box fixed; only positions are synchronized.
 
     Args:
         query: search string for the residue used with the DeltaECV.
@@ -46,7 +51,7 @@ class DeltaECV(CollectiveVariable):
         self.charge_multiplicity_tuples = states_charge_multiplicity 
         self._cv_gradient = None
         self._aux_calculators = {}
-        self._charge_arrays = {}
+        self._state_calculators = {}
         self._indices = None
 
     def get_scalar_cv(
@@ -63,89 +68,69 @@ class DeltaECV(CollectiveVariable):
         Returns:
             The scalar value of the collective variable.
         """
-        time_0 = time.perf_counter()
         system = calculator.system
-        
-        original_charges = system.charges.base.copy()
-        original_positions = system.positions.base.copy()
-
+        positions = system.positions.base.copy()
         energies = {}
         forces = {}
 
         if self._indices is None:
-            self._indices = [i for i in sorted(system.select(self.query))]
-        time_1 = time.perf_counter()
-#         print(f" copying system arrays and sorting indices: {time_1 - time_0:.5f}")
+            self._indices = sorted(system.select(self.query))
 
         for state_name in self._state_names:
-            time_00 = time.perf_counter()
-            if self._aux_calculators.get(state_name,None) is None:
-                self._aux_calculators[state_name] = self._build_aux_calculator(
-                        system,
-                        self.forcefields[state_name],
+            if state_name not in self._state_calculators:
+                aux_calculator = self._build_aux_calculator(
+                    system, self.forcefields[state_name],
                 )
-            if self._charge_arrays.get(state_name,None) is None:
-                self._charge_arrays[state_name] = self._aux_calculators[state_name]\
-                    .system.charges.base.copy()
-            time_01 = time.perf_counter()
-#             print(f"building calculators: {time_01 - time_00:.5f}")
+                charges = aux_calculator.system.charges.base.copy()
+                state_calculator = None
+                if not np.allclose(system.charges[self._indices], charges):
+                    state_calculator = calculator.copy()
+                    self._bypass_bias(state_calculator)
+                    # Assign charges once, only on the independent system.
+                    state_calculator.system.charges[self._indices] = charges
+                self._aux_calculators[state_name] = aux_calculator
+                self._state_calculators[state_name] = state_calculator
 
-#             print(f"####################")
-            time_000 = time.perf_counter()
-            test_charges = system.charges.base.copy()
-            test_charges[self._indices] = self._charge_arrays[state_name]
-            time_001 = time.perf_counter()
-#             print(f"make test charges: {time_001 - time_000:.5f}")
-            if np.allclose(test_charges, original_charges):
-                time_002 = time.perf_counter()
-#                 print(f"evaluate conditional : {time_002 - time_001:.5f}")
-#                 print("charges recognized, not... redoing calculation")
+            state_calculator = self._state_calculators[state_name]
+            if state_calculator is None:
                 result = results
-#                 intra_result = self._aux_calculators[state_name].calculate() 
             else:
-                time_002 = time.perf_counter()
-#                 print(f"conditional : {time_002 - time_001:.5f}")
-#                 system.charges[self._indices] = self._charge_arrays[state_name]
-                time_003 = time.perf_counter()
-#                 print(f"charge update: {time_003 - time_002:.5f}")
+                state_calculator.system.positions[:] = positions
+                result = state_calculator.calculate()
 
-                system.charges[:] = test_charges
-                result = calculator.calculate()
-#                 intra_result = self._aux_calculators[state_name].calculate() 
-
-#                 intra_result = self._aux_calculators[state_name].calculate() 
-                time_004 = time.perf_counter()
-#                 print(f"calculation: {time_004 - time_003:.5f}")
-                
-
-#             print(f"####################")
-            time_02 = time.perf_counter()
-#             print(f"calculation and charge update: {time_02 - time_01:.5f}")
-                
-            intra_result = self._aux_calculators[state_name].calculate()
+            aux_calculator = self._aux_calculators[state_name]
+            aux_calculator.system.positions[:] = positions[self._indices]
+            intra_result = aux_calculator.calculate()
             energies[state_name] = result.energy - intra_result.energy
-            forces[state_name] = result.forces.copy() 
-            forces[state_name][self._indices] = forces[state_name][self._indices]\
-                                          - intra_result.forces
-#             energies[state_name] = result.energy
-#             forces[state_name] = result.forces.copy()
-            time_03 = time.perf_counter()
-#             print(f"intra calculation and subtraction: {time_03 - time_02:.5f}")
-            
-        time_6 = time.perf_counter()
-
-        system.charges[:] = original_charges # this takes basically all the time...
+            forces[state_name] = result.forces.copy()
+            forces[state_name][self._indices] -= intra_result.forces
 
         delta_E = energies[self._state_names[0]] - energies[self._state_names[1]]
-
-        # used in chain_rule()
-        self._cv_gradient = -(forces[self._state_names[0]]\
-                                - forces[self._state_names[1]])
-
-        time_final = time.perf_counter()
-#         print(f"all the other stuff: {time_final - time_6:.5f}")
-#         print(f"total time for delta E cv scalar cv: {time_final - time_0:.4f}")
+        self._cv_gradient = -(
+            forces[self._state_names[0]] - forces[self._state_names[1]]
+        )
         return delta_E
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> DeltaECV:
+        """Copy configuration; state calculators belong to their owning CV."""
+        copied = type(self)(
+            self.query,
+            " - ".join(self._state_names),
+            deepcopy(self.forcefields, memo),
+            deepcopy(self.charge_multiplicity_tuples, memo),
+        )
+        memo[id(self)] = copied
+        return copied
+
+    @staticmethod
+    def _bypass_bias(calculator: Calculator) -> None:
+        """Keep copied plugins, but avoid recursive PLUMED evaluation."""
+        for plugin in calculator.active_plugins():
+            if isinstance(plugin, PLUMED):
+                plugin._bypass_plumed = True
+        if isinstance(calculator, CompositeCalculator):
+            for child in calculator.calculators:
+                DeltaECV._bypass_bias(child)
 
     def chain_rule(
             self,

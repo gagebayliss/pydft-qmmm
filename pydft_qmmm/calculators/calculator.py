@@ -14,6 +14,7 @@ __all__ = [
 
 from abc import ABC
 from abc import abstractmethod
+from copy import deepcopy
 from dataclasses import dataclass
 from dataclasses import field
 from typing import TYPE_CHECKING
@@ -69,6 +70,28 @@ class Calculator(ABC):
     system: System
     calculator_group: str = field(kw_only=True)
     _plugins: list[CalculatorPlugin] = field(default_factory=list, init=False)
+
+    def copy(self) -> Calculator:
+        """Copy the calculator, its system, potentials, and all plugins.
+
+        Shared references within a composite calculator remain shared
+        within the copy. Plugin state is independent and references to
+        calculators are rebound to their copies. Backend caches and
+        method wrappers are rebuilt instead of retaining old bindings.
+        Native plugin engines may be recreated; PLUMED bias history is
+        not cloned.
+        """
+        return deepcopy(self)
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> Calculator:
+        """Copy state without copying closures bound to this calculator."""
+        copied = type(self).__new__(type(self))
+        memo[id(self)] = copied
+        object.__setattr__(copied, "system", deepcopy(self.system, memo))
+        for name, value in vars(self).items():
+            if name != "system" and not name.startswith("__wrapped_"):
+                object.__setattr__(copied, name, deepcopy(value, memo))
+        return copied
 
     @pluggable_method
     @abstractmethod

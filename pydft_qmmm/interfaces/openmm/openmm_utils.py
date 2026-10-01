@@ -16,6 +16,7 @@ from simtk.unit import nanometer
 if TYPE_CHECKING:
     import numpy as np
     from numpy.typing import NDArray
+    from typing import Any
 
 
 def _generate_state(
@@ -454,52 +455,48 @@ def _exclude_custom_nonbonded(
             other_atoms,
         )
 
-_exceptions_cache = {}
 
-def _get_non_zero_exceptions(force: openmm.nonbondedForce) -> list[int]:
-    global _exceptions_cache
-    if (n := force.getForceGroup()) in _exceptions_cache:
-        return _exceptions_cache[n]
+def _get_non_zero_exceptions(
+        force: openmm.NonbondedForce,
+        cache: dict[int, list[tuple[int, list[Any]]]],
+        force_index: int,
+) -> list[tuple[int, list[Any]]]:
+    """Cache exceptions by force index within one OpenMM interface."""
+    if force_index in cache:
+        return cache[force_index]
     exceptions = []
     for i in range(force.getNumExceptions()):
         x = force.getExceptionParameters(i)
         if x[2]:
             exceptions.append((i, x))
-    _exceptions_cache[n] = exceptions
+    cache[force_index] = exceptions
     return exceptions
 
 
-
-_last_charges = None
 def _update_exceptions(
-        force: openmm.nonbondedForce,
+        force: openmm.NonbondedForce,
         new_charges: NDArray[np.float64],
+        cache: dict[int, list[tuple[int, list[Any]]]],
+        force_index: int,
+        charge_idx: frozenset[int],
 ) -> None:
     """Update OpenMM NonbondedForce exceptions to match new charges.
 
     Args:
         force: The OpenMM NonbondedForce with exceptions to update.
         new_charges: The new partial charge (:math:`e`) of the atoms.
+        cache: The exception cache owned by this force's interface.
+        force_index: The index of the force within the interface.
+        charge_idx: Atoms whose charges changed in this interface.
     """
-    global _last_charges
-    if _last_charges is None:
-        charge_idx = frozenset([i for i in range(len(new_charges))])
-    else:
-#         print("we got last charges")
-#         print(len(new_charges))
-#         print(new_charges)
-#         print(len(_last_charges))
-#         print(_last_charges)
-        charge_idx = frozenset(np.where(~np.isclose(new_charges,_last_charges))[0])
-    _last_charges = new_charges.copy()
     time_0 = time.perf_counter()
-    non_zero_exceptions = _get_non_zero_exceptions(force)
+    non_zero_exceptions = _get_non_zero_exceptions(force, cache, force_index)
     time_1 = time.perf_counter()
     filtered_exceptions = []
     for exception in non_zero_exceptions:
         time_00 = time.perf_counter()
         i, x = exception
-        if x[0] in charge_idx and x[1] in charge_idx:
+        if x[0] in charge_idx or x[1] in charge_idx:
             filtered_exceptions.append(exception)
     
     for exception in filtered_exceptions:

@@ -9,6 +9,7 @@ __all__ = [
     "PMEExcludedPotential",
 ]
 
+from copy import deepcopy
 from dataclasses import dataclass
 from dataclasses import field
 from typing import TYPE_CHECKING
@@ -34,6 +35,7 @@ except ImportError:
     )
 
 if TYPE_CHECKING:
+    from typing import Any
     from numpy.typing import NDArray
     from pydft_qmmm import System
 
@@ -64,6 +66,17 @@ class HelPMEPyInterface:
         init=False,
         repr=False,
     )
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> HelPMEPyInterface:
+        """Rebuild PME state and observers for the copied system."""
+        copied = type(self).__new__(type(self))
+        memo[id(self)] = copied
+        for name, value in vars(self).items():
+            if name != "pme" and not name.startswith("__wrapped_"):
+                object.__setattr__(copied, name, deepcopy(value, memo))
+        object.__setattr__(copied, "pme", helpme_py.PMEInstanceD())
+        copied.__post_init__()
+        return copied
 
     def __post_init__(self) -> None:
         """Perform setup for the helPME-py PME object."""

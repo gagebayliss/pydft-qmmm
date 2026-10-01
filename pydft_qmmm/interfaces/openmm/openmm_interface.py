@@ -11,6 +11,7 @@ __all__ = [
     "OpenMMPotential",
 ]
 
+from copy import deepcopy
 from dataclasses import dataclass
 from dataclasses import field
 import re
@@ -65,6 +66,37 @@ class OpenMMInterface(MMInterface):
     aux_energy_group: set[int] = field(default_factory=set)
     aux_forces_group: set[int] = field(default_factory=set)
 
+    def __deepcopy__(self, memo: dict[int, Any]) -> OpenMMInterface:
+        """Recreate contexts and register observers on the copied system."""
+        copied = type(self).__new__(type(self))
+        memo[id(self)] = copied
+        for name in ("base_context", "aux_context"):
+            context = getattr(self, name)
+            platform = context.getPlatform()
+            properties = {
+                key: platform.getPropertyValue(context, key)
+                for key in platform.getPropertyNames()
+            }
+            new_context = openmm.Context(
+                deepcopy(context.getSystem()),
+                deepcopy(context.getIntegrator()),
+                platform,
+                properties,
+            )
+            new_context.setState(context.getState(
+                getPositions=True, getVelocities=True, getParameters=True,
+            ))
+            memo[id(context)] = new_context
+            object.__setattr__(copied, name, new_context)
+        for name, value in vars(self).items():
+            if (name not in {
+                "base_context", "aux_context", "_base_state_cache",
+                "_last_charges", "_exceptions_cache",
+            } and not name.startswith("__wrapped_")):
+                object.__setattr__(copied, name, deepcopy(value, memo))
+        copied.__post_init__()
+        return copied
+
     def __post_init__(self) -> None:
         """Register update methods with relevant system attributes"""
         self.system.charges.register_notifier(self.update_charges)
@@ -72,6 +104,7 @@ class OpenMMInterface(MMInterface):
         self.system.box.register_notifier(self.update_box)
         self.system.subsystems.register_notifier(self.update_subsystems)
         self._last_charges: NDArray[np.float64] | None = None
+        self._exceptions_cache: dict[int, list[tuple[int, list[Any]]]] = {}
 
     def zero_intramolecular(self, atoms: frozenset[int]) -> None:
         """Remove intra-molecular interactions for the specified atoms.
@@ -82,6 +115,7 @@ class OpenMMInterface(MMInterface):
         """
         base_system = self.base_context.getSystem()
         openmm_utils._exclude_intramolecular(base_system, atoms)
+        self._exceptions_cache.clear()
         base_state = self.base_context.getState(getPositions=True)
         omm_pos = base_state.getPositions()
         self.base_context.reinitialize()
@@ -174,6 +208,7 @@ class OpenMMInterface(MMInterface):
         """
         base_system = self.base_context.getSystem()
         openmm_utils._exclude_electrostatic(base_system, atoms)
+        self._exceptions_cache.clear()
         base_state = self.base_context.getState(getPositions=True)
         omm_pos = base_state.getPositions()
         self.base_context.reinitialize()
@@ -188,6 +223,7 @@ class OpenMMInterface(MMInterface):
         """
         base_system = self.base_context.getSystem()
         openmm_utils._exclude_intermolecular(base_system, atoms)
+        self._exceptions_cache.clear()
         base_state = self.base_context.getState(getPositions=True)
         omm_pos = base_state.getPositions()
         self.base_context.reinitialize()
@@ -240,9 +276,13 @@ class OpenMMInterface(MMInterface):
 
         print(charge_indices)
 
-        for force in nonbonded_forces:
+        changed_atoms = frozenset(charge_indices)
+        for force_index, force in enumerate(nonbonded_forces):
             time_00 = time.perf_counter()
-            openmm_utils._update_exceptions(force, charges)
+            openmm_utils._update_exceptions(
+                force, charges, self._exceptions_cache, force_index,
+                changed_atoms,
+            )
             time_01 = time.perf_counter()
             for i in charge_indices:
                 i = int(i)

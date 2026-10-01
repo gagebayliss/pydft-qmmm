@@ -4,6 +4,7 @@ from __future__ import annotations
 
 __all__ = ["PLUMED"]
 
+from copy import deepcopy
 from typing import TYPE_CHECKING
 
 import time
@@ -14,6 +15,7 @@ from pydft_qmmm.utils import DependencyImportError
 from pydft_qmmm.calculators.calculator import CalculatorPlugin
 
 if TYPE_CHECKING:
+    from typing import Any
     from collections.abc import Callable
     from pydft_qmmm.calculators import Calculator
     from pydft_qmmm.calculators import Results
@@ -53,6 +55,22 @@ class PLUMED(CalculatorPlugin):
         self.arbitrary_cvs = arbitrary_cvs
         self.frame = 0
         self._bypass_plumed = False
+        self._initialized = False
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> PLUMED:
+        """Copy plugin state with an independent, lazily created engine.
+
+        Native PLUMED bias history is not cloned. Bypassed copies used
+        for CV evaluation never initialize an engine or open its files.
+        """
+        copied = type(self).__new__(type(self))
+        memo[id(self)] = copied
+        for name, value in vars(self).items():
+            if name not in {"plumed", "_initialized"}:
+                setattr(copied, name, deepcopy(value, memo))
+        copied.plumed = None
+        copied._initialized = False
+        return copied
 
     def modify(
             self,
@@ -65,6 +83,16 @@ class PLUMED(CalculatorPlugin):
                 modified by the plugin.
         """
         self.calculator = calculator
+        self._initialize_plumed()
+
+    def _initialize_plumed(self) -> None:
+        """Initialize the engine against this plugin's own calculator."""
+        if self._initialized:
+            return
+        if self.plumed is None:
+            import plumed
+            self.plumed = plumed.Plumed()
+            self.plumed.cmd("setMDEngine", "python")
         self.plumed.cmd("setNatoms", len(self.calculator.system))
         self.plumed.cmd("setMDLengthUnits", 1/10)
         self.plumed.cmd("setMDTimeUnits", 1/1000)
@@ -75,6 +103,7 @@ class PLUMED(CalculatorPlugin):
         self.plumed.cmd("init")
         for line in self.input_commands.split("\n"):
             self.plumed.cmd("readInputLine", line)
+        self._initialized = True
 
     def _modify_calculate(
             self,
@@ -103,6 +132,7 @@ class PLUMED(CalculatorPlugin):
                 # infinite recursion if we don't do this
                 return results
 
+            self._initialize_plumed()
             self.plumed.cmd("setStep", self.frame)
             self.frame += 1
             self.plumed.cmd("setBox", self.calculator.system.box.T)
@@ -120,8 +150,10 @@ class PLUMED(CalculatorPlugin):
                 cv_forces = np.zeros((len(self.arbitrary_cvs),))
                 for i, (cv_name, cv) in enumerate(self.arbitrary_cvs.items()):
                     self._bypass_plumed = True
-                    cv_values[i] = cv.get_scalar_cv(self.calculator,results)
-                    self._bypass_plumed = False
+                    try:
+                        cv_values[i] = cv.get_scalar_cv(self.calculator,results)
+                    finally:
+                        self._bypass_plumed = False
                     self.plumed.cmd(f"setExtraCV {cv_name}", cv_values[i:i+1])
                     self.plumed.cmd(f"setExtraCVForce {cv_name}", cv_forces[i:i+1])
             time_3 = time.perf_counter()
