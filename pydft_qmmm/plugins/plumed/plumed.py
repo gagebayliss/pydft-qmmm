@@ -145,9 +145,9 @@ class PLUMED(CalculatorPlugin):
                 {"Plumed Bias Energy": biased_energy[0]},
             )
             time_6 = time.perf_counter()
-            print(f"plumed")
-            print(f"calculate: {time_1 - time_0:.5f}")
-            print(f"arbitrary cv: {time_3 - time_2:.5f}")
-            print(f"total: {time_6 - time_0:.5f}")
+#             print(f"plumed")
+#             print(f"calculate: {time_1 - time_0:.5f}")
+#             print(f"arbitrary cv: {time_3 - time_2:.5f}")
+#             print(f"total: {time_6 - time_0:.5f}")
             return results
         return inner

@@ -273,7 +273,7 @@ class OpenMMInterface(MMInterface):
         time_3 = time.perf_counter()
         print(f"iterate over aux context: {time_3 - time_2:.5f}")
         print("////////////////////////////////////////")
-
+ 
     def update_positions(self, positions: NDArray[np.float64]) -> None:
         r"""Set the atomic positions used by OpenMM.
 
@@ -294,8 +294,7 @@ class OpenMMInterface(MMInterface):
             box: The lattice vectors (:math:`\mathrm{\mathring{A}}`) of
                 the box containing the system.
         """
-        # TODO: fix this?
-        pass
+        raise NotImplementedError("...")
 
     def update_subsystems(
             self,

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import time
+
+import numpy as np
+
 import openmm
 from simtk.unit import elementary_charge
 from simtk.unit import kilojoule_per_mole
@@ -465,6 +469,8 @@ def _get_non_zero_exceptions(force: openmm.nonbondedForce) -> list[int]:
     return exceptions
 
 
+
+_last_charges = None
 def _update_exceptions(
         force: openmm.nonbondedForce,
         new_charges: NDArray[np.float64],
@@ -475,11 +481,44 @@ def _update_exceptions(
         force: The OpenMM NonbondedForce with exceptions to update.
         new_charges: The new partial charge (:math:`e`) of the atoms.
     """
-    for exception in _get_non_zero_exceptions(force):
+    global _last_charges
+    if _last_charges is None:
+        charge_idx = frozenset([i for i in range(len(new_charges))])
+    else:
+#         print("we got last charges")
+#         print(len(new_charges))
+#         print(new_charges)
+#         print(len(_last_charges))
+#         print(_last_charges)
+        charge_idx = frozenset(np.where(~np.isclose(new_charges,_last_charges))[0])
+    _last_charges = new_charges.copy()
+    time_0 = time.perf_counter()
+    non_zero_exceptions = _get_non_zero_exceptions(force)
+    time_1 = time.perf_counter()
+    filtered_exceptions = []
+    for exception in non_zero_exceptions:
+        time_00 = time.perf_counter()
+        i, x = exception
+        if x[0] in charge_idx and x[1] in charge_idx:
+            filtered_exceptions.append(exception)
+    
+    for exception in filtered_exceptions:
         i, x = exception
         q0, _, _ = force.getParticleParameters(x[0])
         q1, _, _ = force.getParticleParameters(x[1])
         qprod_old = q0 * q1 / (elementary_charge**2)
         qprod_new = new_charges[x[0]] * new_charges[x[1]]
         x[2] *= (qprod_new / qprod_old)
+        time_01 = time.perf_counter()
         force.setExceptionParameters(i, *x)
+        time_02 = time.perf_counter()
+#         if j == 0:
+#             print("in exception update loop")
+#             print("force.setExceptionParameters(i, *x)")
+#             print(time_02 - time_01)
+#             print("everything else")
+#             print(time_01 - time_00)
+
+    time_2 = time.perf_counter()
+#     print(f"get exceptions {time_1 - time_0:.5f}")
+#     print(f"update exceptions {time_2 - time_1:.5f}")
