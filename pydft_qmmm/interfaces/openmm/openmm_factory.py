@@ -370,12 +370,12 @@ def _build_omm_context(
     if platform.upper() == "CUDA" or platform.upper() == "OPENCL":
         properties = {
             "Precision" : "double", # necessary for converging Drudes w/ CUDA
-        }
+        } # maybe shouldn't be a default... can be a big performance hit
         omm_context = openmm.Context(
             omm_system,
             omm_integrator,
             omm_platform,
-            properties,
+           properties,
         )
     else:
         omm_context = openmm.Context(

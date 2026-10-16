@@ -38,7 +38,7 @@ class CompositeCalculator(Calculator):
         calculators: The calculators that will perform sub-calculations.
     """
     calculators: list[Calculator]
-    calculator_group: str = field(
+    theory_level: str = field(
         default="Composite",
         init=False,
     )

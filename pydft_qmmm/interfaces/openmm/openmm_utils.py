@@ -18,12 +18,9 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
     from typing import Any
 
-
 def _generate_state(
         omm_context: openmm.Context,
         groups: set[int] | int | None = -1,
-        get_energy: bool = True,
-        get_forces: bool = True,
 ) -> openmm.State:
     """Generate an OpenMM State in order to collect energies and forces.
 
@@ -40,7 +37,7 @@ def _generate_state(
     """
     if groups is None:
         groups = -1
-    return omm_context.getState(getEnergy=get_energy, getForces=get_forces, groups=groups)
+    return omm_context.getState(getEnergy=True, getForces=True, groups=groups)
 
 
 def _exclude_intramolecular(

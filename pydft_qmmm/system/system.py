@@ -275,18 +275,18 @@ class System(Sequence[_SystemAtom]):
         copied = System(
             atoms, self.box.base.copy(), deepcopy(self._virtual_sites),
         )
-        for name in self.__dataclass_fields__:
+        for name in self.__dataclass_fields__: # why do we do this?
             if name.startswith("virtual_"):
                 getattr(copied, name)[:] = getattr(self, name)
         return copied
 
     def __deepcopy__(self, memo: dict[int, Any]) -> System:
-        """Copy current data, leaving observers to be registered anew."""
         copied = self.copy()
         memo[id(self)] = copied
-        for name in self.__dataclass_fields__:
-            original_array = getattr(self, name)
-            copied_array = getattr(copied, name)
+        # we do this because self.copy() does everything except handle memo
+        for name in self.__dataclass_fields__: 
+            original_array = getattr(self, name) 
+            copied_array = getattr(copied, name) 
             memo[id(original_array)] = copied_array
             memo[id(original_array.base)] = copied_array.base
         return copied
@@ -409,14 +409,7 @@ class System(Sequence[_SystemAtom]):
                         else name
                     ),
                 )
-                try:
-                    temp = np.concatenate((temp, np.asarray([site_value])))
-                except:
-                    print("temp")
-                    print(temp)
-                    print("site_value")
-                    print(site_value)
-                    temp = np.concatenate((temp, np.asarray(site_value)))
+                temp = np.concatenate((temp, np.asarray([site_value])))
                     
             setattr(self, "_" + name, ObservedArray(temp))
         self._virtual_sites = virtual_sites

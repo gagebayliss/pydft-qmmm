@@ -223,7 +223,7 @@ class PMENuclearPotential(AtomicPotential, HelPMEPyInterface):
                            for atom in nuclei]
         return nuclear_charges
 
-    @system_cache("subsystems", "positions", "charges")
+    @system_cache("subsystems", "positions", "charges", "box")
     def compute_potential_and_derivs(self) -> NDArray[np.float64]:
         r"""Calculate the PME potential and derivatives at the nuclei.
 

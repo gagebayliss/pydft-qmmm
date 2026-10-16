@@ -23,6 +23,7 @@ import openmm
 import openmm.unit
 
 from pydft_qmmm.utils import Subsystem
+from pydft_qmmm.utils import system_cache
 from pydft_qmmm.interfaces import MMInterface
 from pydft_qmmm.potentials import AtomicPotential
 
@@ -71,29 +72,34 @@ class OpenMMInterface(MMInterface):
         copied = type(self).__new__(type(self))
         memo[id(self)] = copied
         for name in ("base_context", "aux_context"):
-            context = getattr(self, name)
-            platform = context.getPlatform()
+            # validated.
+            context = getattr(self, name) 
+            platform = context.getPlatform() 
             properties = {
-                key: platform.getPropertyValue(context, key)
-                for key in platform.getPropertyNames()
-            }
-            new_context = openmm.Context(
-                deepcopy(context.getSystem()),
-                deepcopy(context.getIntegrator()),
-                platform,
-                properties,
+                key: platform.getPropertyValue(context, key) 
+                for key in platform.getPropertyNames() 
+            } 
+            new_context = openmm.Context( 
+                deepcopy(context.getSystem()),   
+                deepcopy(context.getIntegrator()),  
+                platform,   
+                properties,  
             )
             new_context.setState(context.getState(
-                getPositions=True, getVelocities=True, getParameters=True,
+                getPositions=True,
+                getVelocities=True,
+                getParameters=True,
+                getPeriodicBoxVectors=True,
+                getDataTypes=True,
             ))
-            memo[id(context)] = new_context
-            object.__setattr__(copied, name, new_context)
-        for name, value in vars(self).items():
+            memo[id(context)] = new_context 
+            object.__setattr__(copied, name, new_context) 
+        for name, value in vars(self).items():  
             if (name not in {
-                "base_context", "aux_context", "_base_state_cache",
+                "base_context", "aux_context", 
                 "_last_charges", "_exceptions_cache",
             } and not name.startswith("__wrapped_")):
-                object.__setattr__(copied, name, deepcopy(value, memo))
+                object.__setattr__(copied, name, deepcopy(value, memo)) 
         copied.__post_init__()
         return copied
 
@@ -259,22 +265,22 @@ class OpenMMInterface(MMInterface):
         Args:
             charges: The partial charges (:math:`e`) of the atoms.
         """
-        print("////////////////////////////////////////")
+#         print("////////////////////////////////////////")
         time_0 = time.perf_counter()
         nonbonded_forces = [
             force for force in self.base_context.getSystem().getForces()
             if isinstance(force, openmm.NonbondedForce)
         ]
         time_1 = time.perf_counter()
-        print(f"load nonbonded forces: {time_1 - time_0:.5f}")
-        print("len(nonbonded_forces)")
-        print(len(nonbonded_forces))
+#         print(f"load nonbonded forces: {time_1 - time_0:.5f}")
+#         print("len(nonbonded_forces)")
+#         print(len(nonbonded_forces))
         if self._last_charges is not None:
             charge_indices = np.where(~np.isclose(charges,self._last_charges))[0]
         else:
             charge_indices = np.asarray([i for i in range(0,len(charges))])
 
-        print(charge_indices)
+#         print(charge_indices)
 
         changed_atoms = frozenset(charge_indices)
         for force_index, force in enumerate(nonbonded_forces):
@@ -292,13 +298,13 @@ class OpenMMInterface(MMInterface):
             time_02 = time.perf_counter()
             force.updateParametersInContext(self.base_context)
             time_03 = time.perf_counter()
-            print("per one iteration:")
-            print(f"exceptions {time_01 - time_00 }")
-            print(f"update particle parameters {time_02 - time_01 }")
-            print(f"set parameters in context {time_03 - time_02 }")
+#             print("per one iteration:")
+#             print(f"exceptions {time_01 - time_00 }")
+#             print(f"update particle parameters {time_02 - time_01 }")
+#             print(f"set parameters in context {time_03 - time_02 }")
 
         time_2 = time.perf_counter()
-        print(f"iterate over charges: {time_2 - time_1:.5f}")
+#         print(f"iterate over charges: {time_2 - time_1:.5f}")
         custom_nonbonded_forces = [
             force for force in self.aux_context.getSystem().getForces()
             if isinstance(force, openmm.CustomNonbondedForce)
@@ -311,8 +317,8 @@ class OpenMMInterface(MMInterface):
                 force.updateParametersInContext(self.aux_context)
         self._last_charges = charges.copy()
         time_3 = time.perf_counter()
-        print(f"iterate over aux context: {time_3 - time_2:.5f}")
-        print("////////////////////////////////////////")
+#         print(f"iterate over aux context: {time_3 - time_2:.5f}")
+#         print("////////////////////////////////////////")
  
     def update_positions(self, positions: NDArray[np.float64]) -> None:
         r"""Set the atomic positions used by OpenMM.
@@ -398,6 +404,18 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
         aux_forces_group: A force group for the auxiliary OpenMM Context
             whose masked forces will be included.
     """
+    
+    @system_cache("positions", "charges", "subsystems", "elements", "box")
+    def _generate_state(
+        self,
+        omm_context: openmm.Context,
+        groups: set[int] | int | None = -1,
+    ) -> openmm.State:
+        state = openmm_utils._generate_state(
+            omm_context,
+            groups,
+        )
+        return state
 
     def compute_energy(self) -> float:
         r"""Compute the energy of the system using OpenMM.
@@ -406,19 +424,16 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
             The energy (:math:`\mathrm{kJ\;mol^{-1}}`) of the system.
         """
         time_0 = time.perf_counter()
-        base_state = openmm_utils._generate_state(
+        base_state = self._generate_state(
                 self.base_context,
-                get_energy = True,
-                get_forces = True,
             )
-        self._base_state_cache = base_state
         time_1 = time.perf_counter()
         energy = (
             base_state.getPotentialEnergy()._value
 #             / openmm.unit.kilojoule_per_mole
         )
         if self.aux_energy_group:
-            aux_state = openmm_utils._generate_state(
+            aux_state = self._generate_state(
                 self.aux_context, groups=self.aux_energy_group,
             )
             energy += (
@@ -444,12 +459,9 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
         # practically, this function is never called except after
         # compute_energy
 
-        base_state = self._base_state_cache
-#         openmm_utils._generate_state(
-#                 self.base_context,
-#                 get_energy = False,
-#                 get_forces = True,
-#             )
+        self._generate_state(
+                self.base_context,
+            )
         time_05 = time.perf_counter()
         forces = (
             self.base_force_mask * base_state.getForces(asNumpy=True)._value
@@ -458,19 +470,19 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
         )
         time_1 = time.perf_counter()
         if self.aux_energy_group:
-            aux_state = openmm_utils._generate_state(
+            aux_state = self._generate_state(
                 self.aux_context, self.aux_energy_group,
             )
             forces += (
                 self.aux_energy_group_force_mask
-                * aux_state.getForces(asNumpy=True).value
+                * aux_state.getForces(asNumpy=True)._value
                 * 0.1
 #                 / openmm.unit.kilojoule_per_mole
 #                 * openmm.unit.angstrom
             )
         time_2 = time.perf_counter()
         if self.aux_forces_group:
-            aux_state = openmm_utils._generate_state(
+            aux_state = self._generate_state(
                 self.aux_context, self.aux_forces_group,
             )
             forces += (
@@ -501,7 +513,7 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
                 self.base_context.getSystem().getForce(force),
             ).__name__.replace("Force", "Energy")
             key = "Base " + " ".join(re.findall("[A-Z][a-z]*", key))
-            value = openmm_utils._generate_state(
+            value = self._generate_state(
                 self.base_context,
                 {force},
             ).getPotentialEnergy() / openmm.unit.kilojoule_per_mole
@@ -511,7 +523,7 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
                 self.aux_context.getSystem().getForce(force),
             ).__name__.replace("Force", "Energy")
             key = "Correction " + " ".join(re.findall("[A-Z][a-z]*", key))
-            value = openmm_utils._generate_state(
+            value = self._generate_state(
                 self.aux_context,
                 {force},
             ).getPotentialEnergy() / openmm.unit.kilojoule_per_mole

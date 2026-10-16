@@ -127,7 +127,7 @@ class DeltaECV(CollectiveVariable):
         """Keep copied plugins, but avoid recursive PLUMED evaluation."""
         for plugin in calculator.active_plugins():
             if isinstance(plugin, PLUMED):
-                plugin._bypass_plumed = True
+                plugin.bypass_plumed = True
         if isinstance(calculator, CompositeCalculator):
             for child in calculator.calculators:
                 DeltaECV._bypass_bias(child)

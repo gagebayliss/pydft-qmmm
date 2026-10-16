@@ -61,14 +61,14 @@ class Calculator(ABC):
     Args:
         system: The system whose atom positions, atom identities, and
             geometry will be used to calculate energies and forces.
-        calculator_group: label, one of QM, MM, or Composite.
+        theory_level: label, one of QM, MM, or Composite.
 
     Attributes:
         _plugins: The list of plugins that have been registered by the
             calculator.
     """
     system: System
-    calculator_group: str = field(kw_only=True)
+    theory_level: str = field(kw_only=True)
     _plugins: list[CalculatorPlugin] = field(default_factory=list, init=False)
 
     def copy(self) -> Calculator:

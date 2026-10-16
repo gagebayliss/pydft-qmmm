@@ -83,7 +83,7 @@ class Psi4Interface(QMInterface):
         self.potentials.append(potential)
         self.update_options(perturb_h=True, perturb_with="EMBPOT")
 
-    @system_cache("positions", "charges", "elements", "subsystems")
+    @system_cache("positions", "charges", "elements", "subsystems", "box")
     def _generate_wavefunction(self) -> psi4.core.Wavefunction:
         """Generate the Psi4 Wavefunction object.
 
@@ -158,7 +158,7 @@ class Psi4Interface(QMInterface):
         geometrystring += "noreorient\nnocom\n"
         return psi4.geometry(geometrystring)
 
-    @system_cache("positions", "charges", "subsystems")
+    @system_cache("positions", "charges", "subsystems", "box")
     def _generate_external_potential(self) -> NDArray[np.float64] | None:
         r"""Generate the data structure needed to perform embedding.
 

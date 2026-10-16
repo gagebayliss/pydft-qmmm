@@ -7,9 +7,14 @@ __all__ = ["VerletIntegrator"]
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import numpy as np
-import cupy as cp
-from numba import njit
+try:
+    import cupy as xp
+    test = xp.asarray([0,1,2])
+    del test
+    USE_CUPY = True
+except:
+    import numpy as xp
+    USE_CUPY = False
 
 from pydft_qmmm.utils import pluggable_method
 
@@ -49,42 +54,21 @@ class VerletIntegrator(Integrator):
             forces (:math:`\mathrm{kJ\;mol^{-1}\;\mathring{A}^{-1}}`)
             and existing positions and velocities of the system.
         """
-#         positions = np.asarray(system.positions)
-#         velocities = np.asarray(system.velocities)
-#         forces = np.asarray(system.forces)
-#         masses = np.asarray(system.masses.reshape((-1, 1)))
-#         timestep = self.timestep
-        positions = cp.asarray(system.positions)
-        velocities = cp.asarray(system.velocities)
-        forces = cp.asarray(system.forces)
-        masses = cp.asarray(system.masses.reshape((-1, 1)))
+        positions = xp.asarray(system.positions)
+        velocities = xp.asarray(system.velocities)
+        forces = xp.asarray(system.forces)
+        masses = xp.asarray(system.masses.reshape((-1, 1)))
         timestep = self.timestep
 
         momenta = velocities * masses
         momenta = momenta + timestep * forces*(10**-4)
 
-        final_velocities = cp.zeros_like(velocities)
+        final_velocities = xp.zeros_like(velocities)
         mask = masses[:, 0] != 0
         final_velocities[mask,:] = momenta[mask,:] / masses[mask,:]
         final_positions = positions + timestep * final_velocities
-        return (
-            cp.asnumpy(final_positions),
-            cp.asnumpy(final_velocities)
-        )
+        if USE_CUPY:
+            final_positions = xp.asnumpy(final_positions)
+            final_velocities = xp.asnumpy(final_velocities)
+        return final_positions, final_velocities
 
-#         final_positions,final_velocities = integrator_kernel(
-#             positions,velocities,forces,masses,timestep,
-#         )
-#         return final_positions, final_velocities
-
-
-@njit
-def integrator_kernel(positions,velocities,forces,masses,timestep):
-    momenta = velocities * masses
-    momenta = momenta + timestep * forces*(10**-4)
-    final_positions = (
-        positions
-        + timestep*momenta/masses
-    )
-    final_velocities = momenta/masses
-    return final_positions, final_velocities

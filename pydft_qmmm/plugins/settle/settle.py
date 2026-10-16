@@ -8,9 +8,14 @@ from collections.abc import Callable
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
-import numpy as np
-import cupy as cp
-from numpy.typing import NDArray
+try:
+    import cupy as xp
+    test = xp.asarray([0,1,2])
+    del test
+    USE_CUPY=True
+except:
+    import numpy as xp
+    USE_CUPY=False
 
 from .settle_utils import settle_positions
 from .settle_utils import settle_velocities
@@ -19,7 +24,8 @@ from pydft_qmmm.integrators import IntegratorPlugin
 if TYPE_CHECKING:
     from pydft_qmmm.integrators import Returns
     from pydft_qmmm import System
-
+    from numpy.typing import NDArray
+    from numpy import float64
 
 class SETTLE(IntegratorPlugin):
     r"""Apply the SETTLE algorithm to water residues after integration.
@@ -47,7 +53,7 @@ class SETTLE(IntegratorPlugin):
         self.hh_distance = hh_distance
         self._residues = None
 
-    def constrain_velocities(self, system: System) -> NDArray[np.float64]:
+    def constrain_velocities(self, system: System) -> NDArray[float64]:
         """Apply the SETTLE algorithm to system velocities.
 
         Args:
@@ -63,12 +69,17 @@ class SETTLE(IntegratorPlugin):
                 frozenset(system.residue_map.items()),
                 system.select,
             )
+        positions = xp.asarray(system.positions.base)
+        velocities = xp.asarray(system.velocities.base)
+        masses = xp.asarray(system.masses.base)
         velocities = settle_velocities(
             self._residues,
-            system.positions,
-            system.velocities,
-            system.masses,
+            positions,
+            velocities,
+            masses,
         )
+        if USE_CUPY:
+            velocities = xp.asnumpy(velocities)
         return velocities
 
     @lru_cache
@@ -91,9 +102,11 @@ class SETTLE(IntegratorPlugin):
             A list of list of atom indices, representing the all water
             residues in the system.
         """
-        residue_indices = np.unique(
-            np.array(residues)[sorted(select(self.query))],
+        residue_indices = xp.unique(
+            xp.asarray(residues)[sorted(select(self.query))],
         )
+        if USE_CUPY:
+            residue_indices = xp.asnumpy(residue_indices)
         residue_map = dict(residue_set)
         ep_lp_indices = frozenset(select("element Ep Lp"))
         hoh_residues = [
@@ -126,9 +139,9 @@ class SETTLE(IntegratorPlugin):
                     system.select,
                 )
             if self._residues:
-                positions_i = cp.asarray(system.positions)
-                positions_f = cp.asarray(positions)
-                masses = cp.asarray(system.masses)
+                positions_i = xp.asarray(system.positions)
+                positions_f = xp.asarray(positions)
+                masses = xp.asarray(system.masses)
                 positions = settle_positions(
                     self._residues,
                     positions_i,
@@ -137,12 +150,17 @@ class SETTLE(IntegratorPlugin):
                     self.oh_distance,
                     self.hh_distance,
                 )
-                velocities[self._residues, :] = cp.asnumpy(
+                res_velocities = (
                     (
                         positions_f[self._residues, :]
                         - positions_i[self._residues, :]
                     ) /  self.integrator.timestep
                 )
+                if USE_CUPY:
+                    positions = xp.asnumpy(positions)
+                    velocities[self._residues, :] = xp.asnumpy(res_velocities)
+                else:
+                    velocities[self._residues, :] = res_velocities
             return positions, velocities
         return inner
 
@@ -162,29 +180,29 @@ class SETTLE(IntegratorPlugin):
         """
         def inner(system: System) -> float:
             timestep = self.integrator.timestep
-            masses = cp.asarray(system.masses.reshape(-1, 1))
-            delta_v = cp.zeros_like(system.velocities.base)
+            masses = xp.asarray(system.masses.reshape(-1, 1))
+            delta_v = xp.zeros_like(system.velocities.base)
             mask = masses[:,0] != 0
-            forces = cp.asarray(system.forces.base)
+            forces = xp.asarray(system.forces.base)
             delta_v[mask] = 0.5*timestep*forces[mask,:]*(10**-4) /\
                             masses[mask,:]
-            velocities = cp.asarray(system.velocities) + delta_v
+            velocities = xp.asarray(system.velocities) + delta_v
             if self._residues is None:
                 self._residues = self._get_hoh_residues(
                     tuple(system.residues),
                     frozenset(system.residue_map.items()),
                     system.select,
                 )
-            positions = cp.asarray(system.positions.base)
+            positions = xp.asarray(system.positions.base)
             if self._residues:
                 velocities = settle_velocities(
                     self._residues,
-                    system.positions,
+                    positions,
                     velocities,
                     masses,
                 )
             kinetic_energy = (
-                cp.sum(0.5*masses*(velocities)**2)
+                xp.sum(0.5*masses*(velocities)**2)
                 * (10**4)
             )
             return kinetic_energy

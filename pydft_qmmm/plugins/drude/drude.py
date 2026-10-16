@@ -70,7 +70,7 @@ class CachedForceCalculator(Calculator):
         observer: Calculator plugin holding the latest force snapshot.
     """
     observer: QMForceCache
-    calculator_group: str = field(default="External", init=False)
+    theory_level: str = field(default="External", init=False)
 
     @property
     def name(self) -> str:
@@ -130,11 +130,11 @@ class IntegratorDrudeSCF(IntegratorPlugin):
             # Use the existing group labels rather than inspecting backends.
             mm_calculators = [
                 calc for calc in calculator.calculators
-                if calc.calculator_group == "MM"
+                if calc.theory_level == "MM"
             ]
             qm_calculators = [
                 calc for calc in calculator.calculators
-                if calc.calculator_group == "QM"
+                if calc.theory_level == "QM"
             ]
             if (len(mm_calculators) != 1 or len(qm_calculators) != 1
                     or len(calculator.calculators) != 2):
@@ -149,7 +149,7 @@ class IntegratorDrudeSCF(IntegratorPlugin):
                 raise ValueError("All calculators must share the same system.")
             self.mm_calculator = mm_calculators[0]
             qm_calculator = qm_calculators[0]
-        elif calculator.calculator_group != "MM":
+        elif calculator.theory_level != "MM":
             raise ValueError("Drude relaxation requires an MM calculator.")
         omm_system = load_omm_system(calculator.system, forcefield)
         self.drude_data = extract_drude_data(omm_system)
@@ -198,6 +198,7 @@ class IntegratorDrudeSCF(IntegratorPlugin):
                     "Integrator and Drude calculator must share a system.",
                 )
             positions, velocities = integrate(system)
+            print(velocities)
             original_positions = system.positions.base.copy()
             system.positions[:] = positions
             
@@ -215,6 +216,10 @@ class IntegratorDrudeSCF(IntegratorPlugin):
                 )
             positions = system.positions.base.copy()
 
-            velocities[self.drude_data.drude_indices] = 0.0
+            velocities[self.drude_data.drude_indices] = 0.0 #zero everything?
+            print("drude indices:")
+            print(self.drude_data.drude_indices)
+            print("velocities after Drude step:")
+            print(velocities)
             return positions, velocities
         return inner
