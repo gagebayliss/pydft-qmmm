@@ -107,7 +107,6 @@ class IntegratorDrudeSCF(IntegratorPlugin):
         force_tolerance: Maximum residual force component in kJ/mol/angstrom.
         algorithm: any scipy.optimize algorithm not requiring a Hessian.
         max_iterations: Maximum Drude optimization iterations per step.
-        debug_log: Optional file to append optimization diagnostics to.
     """
 
     def __init__(
@@ -118,10 +117,8 @@ class IntegratorDrudeSCF(IntegratorPlugin):
             algorithm: str = "BFGS",
             max_iterations: int = 50,
             strict: bool = False,
-            debug_log: str | None = None,
     ) -> None:
         self.calculator = calculator
-        self.debug_log = debug_log
         self.mm_calculator = calculator
         self.strict = strict
         self.qm_force_cache: QMForceCache | None = None
@@ -198,28 +195,18 @@ class IntegratorDrudeSCF(IntegratorPlugin):
                     "Integrator and Drude calculator must share a system.",
                 )
             positions, velocities = integrate(system)
-            print(velocities)
             original_positions = system.positions.base.copy()
             system.positions[:] = positions
             
             energy, converged = self.scf.solve()
-            if self.debug_log is not None:
-                with open(self.debug_log, "a") as log:
-                    log.write(
-                        f"Energy: {energy}; converged: {converged}\n",
-                    )
-                    if getattr(self.scf,"result",None):
-                        log.write(f"{self.scf.result}\n")
             if not converged and self.strict:
                 raise RuntimeError(
                     "Drude SCF did not reach the force tolerance."
                 )
             positions = system.positions.base.copy()
+            system.positions[:] = original_positions 
 
-            velocities[self.drude_data.drude_indices] = 0.0 #zero everything?
-            print("drude indices:")
-            print(self.drude_data.drude_indices)
-            print("velocities after Drude step:")
-            print(velocities)
+            velocities[self.drude_data.drude_indices] = 0.0 
+
             return positions, velocities
         return inner
