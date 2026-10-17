@@ -152,6 +152,11 @@ class QMMMHamiltonian(CouplingHamiltonian):
                     mm_interface = calc.potential
                 if isinstance(calc.potential, QMInterface):
                     qm_interface = calc.potential
+        configure = getattr(qm_interface, "configure_electrostatic_embedding", None)
+        if configure is not None:
+            configure(
+                self.force_matrix[Subsystem.I][Subsystem.II] == TheoryLevel.QM
+            )
         if (
             self.force_matrix[Subsystem.I][Subsystem.III]
             == TheoryLevel.QM

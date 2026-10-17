@@ -92,3 +92,10 @@ git clone https://github.com/johnppederson/pydft-qmmm
 cd pydft-qmmm
 pip install .
 ```
+
+### GPU4PySCF
+
+The optional `pyscf-mol` QM interface supports CPU PySCF and GPU4PySCF,
+including finite electrostatic embedding with virtual-site charges and
+OpenMM PME for long-range MM electrostatics. See the
+[cluster setup and validation instructions](examples/gpu4pyscf/README.md).

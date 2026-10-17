@@ -37,6 +37,12 @@ except AttributeError:
         entry_points(group="pydft_qmmm.interfaces"),
     )
 
+def _pyscf_factory(*args, **kwargs):
+    """Load optional PySCF dependencies only when explicitly requested."""
+    from .pyscf.pyscf_factory import pyscf_interface_factory
+    return pyscf_interface_factory(*args, **kwargs)
+
+
 LOADED_INTERFACES = tuple(
     map(lambda x: x.load(), DISCOVERED_INTERFACES),
 ) + (psi4, openmm)
@@ -55,4 +61,6 @@ def get_interfaces() -> dict[str, tuple[TheoryLevel, Factory]]:
             LOADED_INTERFACES,
         ),
     )
+    from pydft_qmmm.utils import TheoryLevel
+    interfaces.setdefault("pyscf-mol", (TheoryLevel.QM, _pyscf_factory))
     return interfaces

@@ -40,11 +40,12 @@ arbitrary-topologies = ["ParmEd"]
 enhanced-sampling = ["plumed"]
 qmmm-pme = ["helpme-py"]
 drude = ["scipy"]
+pyscf = ["pyscf>=2.8"]
 dev = ["pre-commit"]
 tests = ["pytest", "pytest-cov"]
 
-[tool.setuptools]
-packages = ["pydft_qmmm"]
+[tool.setuptools.packages.find]
+include = ["pydft_qmmm*"]
 
 [tool.setuptools_scm]
 
