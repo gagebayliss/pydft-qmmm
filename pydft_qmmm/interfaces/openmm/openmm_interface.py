@@ -406,12 +406,27 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
     """
     
     @system_cache("positions", "charges", "subsystems", "elements", "box")
+    def _cached_generate_state(
+        self,
+        omm_context: openmm.Context,
+        groups: frozenset[int] | int | None = -1,
+    ) -> openmm.State:
+        if isinstance(groups,frozenset):
+            groups = set(groups) #brutal
+        state = openmm_utils._generate_state(
+            omm_context,
+            groups,
+        )
+        return state
+
     def _generate_state(
         self,
         omm_context: openmm.Context,
         groups: set[int] | int | None = -1,
     ) -> openmm.State:
-        state = openmm_utils._generate_state(
+        if isinstance(groups,set):
+            groups = frozenset(groups)
+        state = self._cached_generate_state(
             omm_context,
             groups,
         )
@@ -459,7 +474,7 @@ class OpenMMPotential(OpenMMInterface, AtomicPotential):
         # practically, this function is never called except after
         # compute_energy
 
-        self._generate_state(
+        base_state = self._generate_state(
                 self.base_context,
             )
         time_05 = time.perf_counter()
