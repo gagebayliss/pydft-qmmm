@@ -130,6 +130,7 @@ class Simulation(Loggable):
             ################
 
             unwrapped_positions = self.system.positions.base + self._offset
+
             logger.info(
                 "",
                 extra={

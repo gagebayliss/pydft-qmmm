@@ -1,7 +1,7 @@
 """Integrator plugin for Drude relaxation with fixed QM forces."""
 from __future__ import annotations
 
-__all__ = ["IntegratorDrudeSCF", "QMForceCache", "CachedForceCalculator"]
+__all__ = ["IntegratorDrudeSCF", "CalculatorDrudeSCF","QMForceCache", "CachedForceCalculator"]
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -209,4 +209,122 @@ class IntegratorDrudeSCF(IntegratorPlugin):
             velocities[self.drude_data.drude_indices] = 0.0 
 
             return positions, velocities
+        return inner
+
+
+class CalculatorDrudeSCF(CalculatorPlugin):
+    """
+    Args:
+        calculator: MM calculator or a composite containing one MM and
+            one QM calculator. 
+        forcefield: XML forcefield files used to identify Drude particles.
+        force_tolerance: Maximum residual force component in kJ/mol/angstrom.
+        algorithm: any scipy.optimize algorithm not requiring a Hessian.
+        max_iterations: Maximum Drude optimization iterations per step.
+    """
+
+    def __init__(
+            self,
+            forcefield: list[str] | str,
+            force_tolerance: float = 0.10,
+            algorithm: str = "L-BFGS-B",
+            max_iterations: int = 50,
+            strict: bool = False,
+    ) -> None:
+        pass
+        self.forcefield = forcefield
+        self.force_tolerance = force_tolerance
+        self.algorithm = algorithm
+        self.max_iterations = max_iterations
+        self.strict = strict 
+
+    def modify(self, calculator: Calculator):
+        self.calculator = calculator
+        self.mm_calculator = calculator
+        self.qm_force_cache: QMForceCache | None = None
+        qm_calculator = None
+        if isinstance(calculator, CompositeCalculator):
+            # Use the existing group labels rather than inspecting backends.
+            mm_calculators = [
+                calc for calc in calculator.calculators
+                if calc.theory_level == "MM"
+            ]
+            qm_calculators = [
+                calc for calc in calculator.calculators
+                if calc.theory_level == "QM"
+            ]
+            if (len(mm_calculators) != 1 or len(qm_calculators) != 1
+                    or len(calculator.calculators) != 2):
+                raise ValueError(
+                    "Drude relaxation requires one MM and one QM calculator; "
+                    "additional energy terms need an explicit force split.",
+                )
+            if any(
+                calc.system is not calculator.system
+                for calc in calculator.calculators
+            ):
+                raise ValueError("All calculators must share the same system.")
+            self.mm_calculator = mm_calculators[0]
+            qm_calculator = qm_calculators[0]
+        elif calculator.theory_level != "MM":
+            raise ValueError("Drude relaxation requires an MM calculator.")
+
+        omm_system = load_omm_system(calculator.system, self.forcefield)
+        self.drude_data = extract_drude_data(omm_system)
+        if self.drude_data is None or not len(self.drude_data):
+            raise ValueError("The forcefield must contain Drude particles.")
+        external_potential = None
+
+        if qm_calculator is not None:
+            self.qm_force_cache = QMForceCache()
+            external_potential = CachedForceCalculator(
+                calculator.system, self.qm_force_cache,
+            )
+            drude_scf = DrudeSCF(
+                DrudeCalculator(
+                    self.mm_calculator, self.drude_data, external_potential,
+                ),
+                max_iterations=self.max_iterations,
+                algorithm=self.algorithm,
+                force_tolerance=self.force_tolerance,
+            )
+            qm_scf = SCFAdapter(qm_calculator)
+            self.scf = CompositeSCF(
+               [qm_scf, drude_scf],
+               objective_index=0,
+               tolerance=1e-6,
+               maxiter=10,
+            )
+            qm_calculator.register_plugin(self.qm_force_cache)
+
+        else:
+            self.scf = DrudeSCF(
+                DrudeCalculator(
+                    self.mm_calculator, self.drude_data,
+                ),
+                max_iterations=self.max_iterations,
+                algorithm=self.algorithm,
+                force_tolerance=self.force_tolerance,
+            )
+
+    def _modify_calculate(
+            self,
+            calculate: Callable[[Bool,Bool], Results],
+        ) -> Callable[[Bool,Bool], Results]:
+        """Return relaxed positions without mutating the input system."""
+        def inner(
+                return_forces: bool = True,
+                return_components: bool = True,
+            ) -> Results:
+            
+            energy, converged = self.scf.solve()
+            if not converged and self.strict:
+                raise RuntimeError(
+                    "Drude SCF did not reach the force tolerance."
+                )
+            # TODO
+            # can avoid this extra calculation by
+            # passing forces and components from self.scf.solve()...
+            results = calculate(return_forces,return_components)
+            return results
         return inner

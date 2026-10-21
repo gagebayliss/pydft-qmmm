@@ -6,7 +6,10 @@ __all__ = ["psi4_interface_factory"]
 
 from typing import TYPE_CHECKING
 
-import psi4
+try:
+    import psi4
+except:
+    print("could not import psi4")
 
 from . import psi4_interface
 from . import psi4_utils

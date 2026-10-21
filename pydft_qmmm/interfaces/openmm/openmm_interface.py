@@ -89,8 +89,7 @@ class OpenMMInterface(MMInterface):
                 getPositions=True,
                 getVelocities=True,
                 getParameters=True,
-                getPeriodicBoxVectors=True,
-                getDataTypes=True,
+                enforcePeriodicBox=True,
             ))
             memo[id(context)] = new_context 
             object.__setattr__(copied, name, new_context) 

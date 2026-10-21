@@ -12,7 +12,10 @@ from dataclasses import field
 from typing import TYPE_CHECKING
 
 import numpy as np
-import psi4.core
+try:
+    import psi4.core
+except:
+    print("could not import psi4")
 
 from pydft_qmmm.interfaces import QMInterface
 from pydft_qmmm.potentials import AtomicPotential

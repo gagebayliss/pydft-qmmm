@@ -10,7 +10,10 @@ __all__ = [
 
 from typing import TypeAlias
 
-import psi4
+try:
+    import psi4
+except:
+    print("whoops")
 
 Psi4Options: TypeAlias = str | int | float | bool
 

@@ -5,6 +5,7 @@ __all__ = [
     "DrudeData",
     "DrudeSCF",
     "IntegratorDrudeSCF",
+    "CalculatorDrudeSCF",
     "QMForceCache",
     "CachedForceCalculator",
     "CompositeSCF",
@@ -16,6 +17,7 @@ __all__ = [
 from .drude_data import DrudeData
 from .drude_data import extract_drude_data
 from .drude import IntegratorDrudeSCF
+from .drude import CalculatorDrudeSCF
 from .drude import QMForceCache
 from .drude import CachedForceCalculator
 from .drude_solver import DrudeSCF
