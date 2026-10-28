@@ -7,18 +7,30 @@ __all__ = [
     "settle_velocities",
 ]
 
-import numpy as np
-from numpy.typing import NDArray
+from typing import TYPE_CHECKING
+
+try:
+    import cupy as xp
+    test = xp.asarray([0,1,2])
+    del test
+    USE_CUPY=True
+except:
+    import numpy as xp
+    USE_CUPY=False
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+    from numpy import float64
 
 
 def settle_positions(
         residues: list[list[int]],
-        positions_i: NDArray[np.float64],
-        positions_f: NDArray[np.float64],
-        masses: NDArray[np.float64],
+        positions_i: NDArray[float64],
+        positions_f: NDArray[float64],
+        masses: NDArray[float64],
         oh_distance: int | float = 1.,
         hh_distance: int | float = 1.632981,
-) -> NDArray[np.float64]:
+) -> NDArray[float64]:
     r"""A utility to perform the SETTLE algorithm on a set of positions.
 
     This method is based off of the implementation of OpenMM in
@@ -157,15 +169,15 @@ def settle_positions(
     yc3 = trns21*xc3d + trns22*yc3d + trns23*zc3d
     zc3 = trns31*xc3d + trns32*yc3d + trns33*zc3d
 
-    xa3 = np.concatenate(
+    xa3 = xp.concatenate(
         (xa3.reshape(-1, 1), ya3.reshape(-1, 1), za3.reshape(-1, 1)),
         axis=1,
     )
-    xb3 = np.concatenate(
+    xb3 = xp.concatenate(
         (xb3.reshape(-1, 1), yb3.reshape(-1, 1), zb3.reshape(-1, 1)),
         axis=1,
     )
-    xc3 = np.concatenate(
+    xc3 = xp.concatenate(
         (xc3.reshape(-1, 1), yc3.reshape(-1, 1), zc3.reshape(-1, 1)),
         axis=1,
     )
@@ -178,11 +190,11 @@ def settle_positions(
     ha_1 = ha_0 + xp1
     hb_1 = hb_0 + xp2
 
-    pos_1 = np.concatenate(
+    pos_1 = xp.concatenate(
         (
-            oxy_1[:, np.newaxis, :],
-            ha_1[:, np.newaxis, :],
-            hb_1[:, np.newaxis, :],
+            oxy_1[:, None, :],
+            ha_1[:, None, :],
+            hb_1[:, None, :],
         ),
         axis=1,
     )
@@ -192,10 +204,10 @@ def settle_positions(
 
 def settle_velocities(
         residues: list[list[int]],
-        positions_i: NDArray[np.float64],
-        velocities_i: NDArray[np.float64],
-        masses: NDArray[np.float64],
-) -> NDArray[np.float64]:
+        positions_i: NDArray[float64],
+        velocities_i: NDArray[float64],
+        masses: NDArray[float64],
+) -> NDArray[float64]:
     r"""A utility to perform the SETTLE algorithm on a set of velocities.
 
     This method is based off of the implementation of OpenMM in
@@ -234,17 +246,17 @@ def settle_velocities(
     eBC = hb_p - ha_p
     eCA = oxy_p - hb_p
 
-    eAB = eAB * np.sum(eAB**2, axis=1, keepdims=True)**-0.5
-    eBC = eBC * np.sum(eBC**2, axis=1, keepdims=True)**-0.5
-    eCA = eCA * np.sum(eCA**2, axis=1, keepdims=True)**-0.5
+    eAB = eAB * xp.sum(eAB**2, axis=1, keepdims=True)**-0.5
+    eBC = eBC * xp.sum(eBC**2, axis=1, keepdims=True)**-0.5
+    eCA = eCA * xp.sum(eCA**2, axis=1, keepdims=True)**-0.5
 
-    vAB = np.sum((ha_v - oxy_v)*eAB, axis=1, keepdims=True)
-    vBC = np.sum((hb_v - ha_v)*eBC, axis=1, keepdims=True)
-    vCA = np.sum((oxy_v - hb_v)*eCA, axis=1, keepdims=True)
+    vAB = xp.sum((ha_v - oxy_v)*eAB, axis=1, keepdims=True)
+    vBC = xp.sum((hb_v - ha_v)*eBC, axis=1, keepdims=True)
+    vCA = xp.sum((oxy_v - hb_v)*eCA, axis=1, keepdims=True)
 
-    cA = -np.sum(eAB*eCA, axis=1, keepdims=True)
-    cB = -np.sum(eAB*eBC, axis=1, keepdims=True)
-    cC = -np.sum(eBC*eCA, axis=1, keepdims=True)
+    cA = -xp.sum(eAB*eCA, axis=1, keepdims=True)
+    cB = -xp.sum(eAB*eBC, axis=1, keepdims=True)
+    cC = -xp.sum(eBC*eCA, axis=1, keepdims=True)
 
     s2A = 1 - cA**2
     s2B = 1 - cB**2
@@ -275,11 +287,11 @@ def settle_velocities(
     ha_v = ha_v + (eBC*tbc - eAB*tab)/m_ha
     hb_v = hb_v + (eCA*tca - eBC*tbc)/m_hb
 
-    vel_1 = np.concatenate(
+    vel_1 = xp.concatenate(
         (
-            oxy_v[:, np.newaxis, :],
-            ha_v[:, np.newaxis, :],
-            hb_v[:, np.newaxis, :],
+            oxy_v[:, None, :],
+            ha_v[:, None, :],
+            hb_v[:, None, :],
         ),
         axis=1,
     )

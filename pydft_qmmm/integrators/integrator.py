@@ -18,15 +18,25 @@ from dataclasses import field
 from typing import TYPE_CHECKING
 from typing import TypeAlias
 
-import numpy as np
-from numpy.typing import NDArray
+try:
+    import cupy as xp
+    test = xp.asarray([0,1,2])
+    del test
+    USE_CUPY = True
+except:
+    import numpy as xp
+    USE_CUPY = False
+
 
 from pydft_qmmm.utils import pluggable_method
+
+from numpy.typing import NDArray
+from numpy import float64
 
 if TYPE_CHECKING:
     from pydft_qmmm import System
 
-Returns: TypeAlias = tuple[NDArray[np.float64], NDArray[np.float64]]
+Returns: TypeAlias = tuple[NDArray[float64], NDArray[float64]]
 
 
 @dataclass(frozen=True)
@@ -80,15 +90,14 @@ class Integrator(ABC):
             The kinetic energy (:math:`\mathrm{kJ\;mol^{-1}}`) of the
             system.
         """
-        masses = system.masses.reshape(-1, 1)
-        velocities = (
-            system.velocities
-            + (
-                0.5*self.timestep
-                * system.forces*(10**-4)/masses
-            )
-        )
-        kinetic_energy = np.sum(0.5*masses*(velocities)**2) * (10**4)
+        masses = xp.asarray(system.masses.reshape(-1, 1))
+        mask = masses[:,0] != 0
+        delta_v = xp.zeros_like(system.velocities)
+        forces = xp.asarray(system.forces.base)
+        delta_v[mask] = 0.5*self.timestep* forces[mask,:]*(10**-4)/\
+                        masses[mask,:]
+        velocities = xp.asarray(system.velocities) + delta_v
+        kinetic_energy = xp.sum(0.5*masses*(velocities)**2) * (10**4)
         return kinetic_energy
 
     def register_plugin(

@@ -9,7 +9,16 @@ __all__ = [
 
 from typing import TYPE_CHECKING
 
-import numpy as np
+from collections import defaultdict
+
+try: 
+    import cupy as xp
+    test = xp.asarray([0,1,2])
+    del test
+    USE_CUPY=True
+except:
+    import numpy as xp
+    USE_CUPY=False
 
 from pydft_qmmm.calculators.calculator import CalculatorPlugin
 from pydft_qmmm.integrators.integrator import IntegratorPlugin
@@ -21,10 +30,11 @@ if TYPE_CHECKING:
     from pydft_qmmm.calculators import Results
     from pydft_qmmm import System
 
-
 def _wrap_positions(
         positions: NDArray[np.float64],
         system: System,
+        residue_indices: dict[list] = None,
+#         inverse_box: NDArray[np.float64] = None,
 ) -> NDArray[np.float64]:
     r"""Wrap atom positions in accord with PBC.
 
@@ -41,27 +51,53 @@ def _wrap_positions(
     Returns:
         The new wrapped positions of the system.
     """
-    box = system.box.base.copy()
-    inverse_box = np.linalg.inv(box)
-    new_positions = np.zeros(positions.shape)
-    for residue in system.residue_map.values():
-        atoms = sorted(residue)
-        residue_positions = positions[atoms, :]
-        residue_centroid = np.average(
+    if residue_indices is None:
+        residue_groups = defaultdict(list)
+        for residue in system.residue_map.values():
+            atoms = sorted(residue)
+            residue_groups[len(atoms)].append(atoms)
+        residue_indices = {
+            n_atoms: xp.asarray(residues,dtype=xp.int32)
+            for n_atoms, residues in residue_groups.items()    
+        }
+
+    positions_gpu = xp.asarray(positions)
+    box = xp.asarray(system.box.base)
+    inverse_box = xp.linalg.inv(box)
+
+    new_positions = positions_gpu.copy()
+
+    for indices in residue_indices.values(): 
+        residue_positions = positions_gpu[indices]
+
+        centroids = xp.mean(
             residue_positions,
-            axis=0,
-        ).reshape((3, 1))
-        inverse_centroid = inverse_box @ residue_centroid
-        mask = np.floor(inverse_centroid)
-        diff = (-box @ mask).reshape((-1, 3))
-        temp = residue_positions + diff[:, np.newaxis, :]
-        new_positions[atoms] = temp.reshape((len(atoms), 3))
-    return new_positions
+            axis=1,
+        )
+
+        fractional_centroids = centroids @ inverse_box.T
+
+        masks = xp.floor(fractional_centroids)
+
+        shifts = -(masks @ box.T)
+
+        wrapped = residue_positions + shifts[:, None, :]
+
+        new_positions[indices] = wrapped
+    
+    if USE_CUPY:
+        new_positions = xp.asnumpy(new_positions)
+    return new_positions, residue_indices
 
 
 class CalculatorWrap(CalculatorPlugin):
     """Wrap positions before performing a calculation.
     """
+    def __init__(self,wrap_frequency: int = 20):
+        super().__init__()
+        self.residue_indices = None
+        self._step = 0
+        self._wrap_frequency = wrap_frequency
 
     def _modify_calculate(
             self,
@@ -80,10 +116,14 @@ class CalculatorWrap(CalculatorPlugin):
                 return_forces: bool = True,
                 return_components: bool = True,
         ) -> Results:
-            self.calculator.system.positions[:] = _wrap_positions(
-                self.calculator.system.positions,
-                self.calculator.system,
-            )
+            if self._step % self._wrap_frequency == 0:
+                self.calculator.system.positions[:], self.residue_indices =\
+                    _wrap_positions(
+                        self.calculator.system.positions,
+                        self.calculator.system,
+                        self.residue_indices,
+                    )
+            self._step += 1
             results = calculate(return_forces, return_components)
             return results
         return inner
@@ -92,6 +132,11 @@ class CalculatorWrap(CalculatorPlugin):
 class IntegratorWrap(IntegratorPlugin):
     """Wrap positions after performing an integration.
     """
+    def __init__(self,wrap_frequency: int = 20):
+        super().__init__()
+        self.residue_indices = None
+        self._step = 0
+        self._wrap_frequency = wrap_frequency
 
     def _modify_integrate(
             self,
@@ -108,6 +153,12 @@ class IntegratorWrap(IntegratorPlugin):
         """
         def inner(system: System) -> Returns:
             positions, velocities = integrate(system)
-            positions = _wrap_positions(positions, system)
+            if self._step % self._wrap_frequency == 0:
+                positions, self.residue_indices = _wrap_positions(
+                        positions,
+                        system,
+                        self.residue_indices
+                    )
+            self._step += 1
             return positions, velocities
         return inner

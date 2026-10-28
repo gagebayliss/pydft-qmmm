@@ -7,6 +7,15 @@ __all__ = ["VerletIntegrator"]
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+try:
+    import cupy as xp
+    test = xp.asarray([0,1,2])
+    del test
+    USE_CUPY = True
+except:
+    import numpy as xp
+    USE_CUPY = False
+
 from pydft_qmmm.utils import pluggable_method
 
 from .integrator import Integrator
@@ -45,12 +54,21 @@ class VerletIntegrator(Integrator):
             forces (:math:`\mathrm{kJ\;mol^{-1}\;\mathring{A}^{-1}}`)
             and existing positions and velocities of the system.
         """
-        masses = system.masses.reshape((-1, 1))
-        momenta = system.velocities * masses
-        momenta = momenta + self.timestep * system.forces*(10**-4)
-        final_positions = (
-            system.positions
-            + self.timestep*momenta/masses
-        )
-        final_velocities = momenta/masses
+        positions = xp.asarray(system.positions)
+        velocities = xp.asarray(system.velocities)
+        forces = xp.asarray(system.forces)
+        masses = xp.asarray(system.masses.reshape((-1, 1)))
+        timestep = self.timestep
+
+        momenta = velocities * masses
+        momenta = momenta + timestep * forces*(10**-4)
+
+        final_velocities = xp.zeros_like(velocities)
+        mask = masses[:, 0] != 0
+        final_velocities[mask,:] = momenta[mask,:] / masses[mask,:]
+        final_positions = positions + timestep * final_velocities
+        if USE_CUPY:
+            final_positions = xp.asnumpy(final_positions)
+            final_velocities = xp.asnumpy(final_velocities)
         return final_positions, final_velocities
+

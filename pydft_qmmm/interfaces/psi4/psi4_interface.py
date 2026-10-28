@@ -81,8 +81,9 @@ class Psi4Interface(QMInterface):
                 QM calculations.
         """
         self.potentials.append(potential)
+        self.update_options(perturb_h=True, perturb_with="EMBPOT")
 
-    @system_cache("positions", "charges", "elements", "subsystems")
+    @system_cache("positions", "charges", "elements", "subsystems", "box")
     def _generate_wavefunction(self) -> psi4.core.Wavefunction:
         """Generate the Psi4 Wavefunction object.
 
@@ -142,7 +143,7 @@ class Psi4Interface(QMInterface):
         c1_molecule.update_geometry()
         return c1_molecule
 
-    @system_cache("positions", "charges", "subsystems")
+    @system_cache("positions", "charges", "subsystems", "box")
     def _generate_external_potentials(self) -> list[Any] | None:
         r"""Generate the data structure needed to perform embedding.
 

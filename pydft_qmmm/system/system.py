@@ -5,6 +5,7 @@ from __future__ import annotations
 __all__ = ["System"]
 
 from collections.abc import Sequence
+from copy import deepcopy
 from dataclasses import field
 from functools import cached_property
 from types import MappingProxyType
@@ -14,6 +15,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .atom import _SystemAtom
+from .atom import Atom
 from .variable import ArrayValue
 from .variable import ObservedArray
 from .variable import observed_class
@@ -37,7 +39,6 @@ if TYPE_CHECKING:
     from typing import Any
     from collections.abc import Callable
     from numpy.typing import NDArray
-    from .atom import Atom
     from pydft_qmmm.utils.virtual_sites import VirtualSite
 
 
@@ -262,7 +263,33 @@ class System(Sequence[_SystemAtom]):
         Returns:
             An identical System object.
         """
-        return System(self._atoms,self._box,self._virtual_sites)
+        atoms = [
+            Atom(**{
+                name: deepcopy(getattr(atom, name))
+                if not isinstance(getattr(atom, name), np.ndarray)
+                else np.array(getattr(atom, name), copy=True)
+                for name in Atom.__dataclass_fields__
+            })
+            for atom in self
+        ]
+        copied = System(
+            atoms, self.box.base.copy(), deepcopy(self._virtual_sites),
+        )
+        for name in self.__dataclass_fields__: # why do we do this?
+            if name.startswith("virtual_"):
+                getattr(copied, name)[:] = getattr(self, name)
+        return copied
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> System:
+        copied = self.copy()
+        memo[id(self)] = copied
+        # we do this because self.copy() does everything except handle memo
+        for name in self.__dataclass_fields__: 
+            original_array = getattr(self, name) 
+            copied_array = getattr(copied, name) 
+            memo[id(original_array)] = copied_array
+            memo[id(original_array.base)] = copied_array.base
+        return copied
 
     def copy_selection(
             self,
@@ -382,14 +409,7 @@ class System(Sequence[_SystemAtom]):
                         else name
                     ),
                 )
-                try:
-                    temp = np.concatenate((temp, np.asarray([site_value])))
-                except:
-                    print("temp")
-                    print(temp)
-                    print("site_value")
-                    print(site_value)
-                    temp = np.concatenate((temp, np.asarray(site_value)))
+                temp = np.concatenate((temp, np.asarray([site_value])))
                     
             setattr(self, "_" + name, ObservedArray(temp))
         self._virtual_sites = virtual_sites

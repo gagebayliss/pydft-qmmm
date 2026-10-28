@@ -6,6 +6,8 @@ __all__ = ["PLUMED"]
 
 from typing import TYPE_CHECKING
 
+import time
+
 import numpy as np
 
 from pydft_qmmm.utils import DependencyImportError
@@ -92,13 +94,15 @@ class PLUMED(CalculatorPlugin):
                 return_forces: bool = True,
                 return_components: bool = True,
         ) -> Results:
+            time_0 = time.perf_counter()
             results = calculate(return_forces, return_components)
+            time_1 = time.perf_counter()
             
             if self._bypass_plumed:
                 # arbitrary CVs call calculator,
                 # infinite recursion if we don't do this
                 return results
-                
+
             self.plumed.cmd("setStep", self.frame)
             self.frame += 1
             self.plumed.cmd("setBox", self.calculator.system.box.T)
@@ -110,6 +114,7 @@ class PLUMED(CalculatorPlugin):
             virial = np.zeros((3, 3))
             self.plumed.cmd("setVirial", virial)
 
+            time_2 = time.perf_counter()
             if self.arbitrary_cvs is not None:
                 cv_values = np.zeros((len(self.arbitrary_cvs),))
                 cv_forces = np.zeros((len(self.arbitrary_cvs),))
@@ -119,20 +124,30 @@ class PLUMED(CalculatorPlugin):
                     self._bypass_plumed = False
                     self.plumed.cmd(f"setExtraCV {cv_name}", cv_values[i:i+1])
                     self.plumed.cmd(f"setExtraCVForce {cv_name}", cv_forces[i:i+1])
+            time_3 = time.perf_counter()
 
             self.plumed.cmd("prepareCalc")
             self.plumed.cmd("performCalc")
             biased_energy = np.zeros((1,))
             self.plumed.cmd("getBias", biased_energy)
 
+            time_4 = time.perf_counter()
+
             if self.arbitrary_cvs is not None:
                 for i, (cv_name, cv) in enumerate(self.arbitrary_cvs.items()):
                     biased_forces += cv_forces[i] * cv.chain_rule()
+
+            time_5 = time.perf_counter()
 
             results.energy += biased_energy[0]
             results.forces += biased_forces
             results.components.update(
                 {"Plumed Bias Energy": biased_energy[0]},
             )
+            time_6 = time.perf_counter()
+#             print(f"plumed")
+#             print(f"calculate: {time_1 - time_0:.5f}")
+#             print(f"arbitrary cv: {time_3 - time_2:.5f}")
+#             print(f"total: {time_6 - time_0:.5f}")
             return results
         return inner

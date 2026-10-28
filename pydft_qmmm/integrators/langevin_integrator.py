@@ -7,7 +7,14 @@ __all__ = ["LangevinIntegrator"]
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import numpy as np
+try:
+    import cupy as xp
+    test = xp.asarray([0,1,2])
+    del test
+    USE_CUPY = True
+except:
+    import numpy as xp
+    USE_CUPY = False
 
 from pydft_qmmm.utils import KB
 from pydft_qmmm.utils import pluggable_method
@@ -54,24 +61,30 @@ class LangevinIntegrator(Integrator):
             forces (:math:`\mathrm{kJ\;mol^{-1}\;\mathring{A}^{-1}}`)
             and existing positions and velocities of the system.
         """
-        masses = system.masses.reshape((-1, 1))
-        vel_scale = np.exp(-self.timestep*self.friction)
+        masses = xp.asarray(system.masses.reshape((-1, 1)))
+        velocities = xp.asarray(system.velocities.base)
+        vel_scale = xp.exp(-self.timestep*self.friction)
         frc_scale = (
             self.timestep
             if self.friction == 0
             else (1 - vel_scale)/self.friction
         )
         noi_scale = (KB*self.temperature*(1 - vel_scale**2)*1000)**0.5
-        z = np.random.standard_normal((len(masses), 3))
-        momenta = system.velocities*masses
+        z = xp.random.standard_normal((len(masses), 3))
+        forces = xp.asarray(system.forces.base)
+        momenta = velocities*masses
         momenta = (
             vel_scale*momenta
-            + frc_scale*system.forces*(10**-4)
+            + frc_scale*forces*(10**-4)
             + noi_scale*(10**-5)*z*masses**0.5
         )
+        mask = masses[:,0] != 0
+        final_velocities = xp.zeros_like(momenta)
+        final_velocities[mask,:] = momenta[mask,:] / masses[mask,:]
+        if USE_CUPY:
+            final_velocities = xp.asnumpy(final_velocities)
         final_positions = (
             system.positions
-            + self.timestep*momenta/masses
+            + self.timestep*final_velocities
         )
-        final_velocities = momenta/masses
         return final_positions, final_velocities
