@@ -8,19 +8,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field
+import logging
+import textwrap
 from typing import TYPE_CHECKING
 
 import numpy as np
-import psi4.core
+import psi4
 
 from pydft_qmmm.interfaces import QMInterface
 from pydft_qmmm.potentials import AtomicPotential
 from pydft_qmmm.utils import BOHR_PER_ANGSTROM
 from pydft_qmmm.utils import KJMOL_PER_EH
+from pydft_qmmm.utils import PyDFTQMMMException
 from pydft_qmmm.utils import system_cache
 from pydft_qmmm.utils import virtual_sites
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from numpy.typing import NDArray
     from pydft_qmmm.potentials import ElectronicPotential
     from pydft_qmmm import System  # noqa: F401
@@ -62,6 +67,12 @@ class Psi4Interface(QMInterface):
         init=False,
     )
 
+    def __post_init__(self) -> None:
+        """Perform post-initialization setup.
+        """
+        # This currently suppresses the Psi4 task planner output.
+        logging.getLogger("psi4").setLevel(logging.CRITICAL + 1)
+
     def add_electronic_potential(self, potential: ElectronicPotential) -> None:
         """Add an electronic potential to apply before calculations.
 
@@ -70,7 +81,6 @@ class Psi4Interface(QMInterface):
                 QM calculations.
         """
         self.potentials.append(potential)
-        self.update_options(perturb_h=True, perturb_with="EMBPOT")
 
     @system_cache("positions", "charges", "elements", "subsystems")
     def _generate_wavefunction(self) -> psi4.core.Wavefunction:
@@ -83,33 +93,11 @@ class Psi4Interface(QMInterface):
         if not self.frame[0] % self.output_interval:
             psi4.core.set_output_file(self.output_file, True)
         molecule = self._generate_molecule()
-        if self.potentials:
-            basis_set = psi4.core.BasisSet.build(
-                molecule,
-                "BASIS",
-                psi4.core.get_global_option("BASIS"),
-            )
-            grid = psi4.core.DFTGrid.build(molecule, basis_set)
-            blocks = []
-            for block in grid.blocks():
-                x = block.x().np
-                y = block.y().np
-                z = block.z().np
-                w = block.w().np
-                blocks.append(np.stack((x, y, z, w), axis=-1))
-            xyzw = np.concatenate(tuple(blocks), axis=0)
-            v = np.zeros_like(xyzw[:, 0]).reshape(-1, 1)
-            for potential in self.potentials:
-                v += potential.compute_potential(
-                    xyzw[:, :-1] / BOHR_PER_ANGSTROM,
-                )
-            data = np.concatenate((xyzw, v), axis=1)
-            np.savetxt("EMBPOT", data, header=f"{len(data)}", comments="")
         _, wfn = psi4.energy(
             self.functional,
             return_wfn=True,
             molecule=molecule,
-            external_potentials=self._generate_external_potential(),
+            external_potentials=self._generate_external_potentials(),
         )
         wfn.to_file(
             wfn.get_scratch_filename(180),
@@ -127,12 +115,15 @@ class Psi4Interface(QMInterface):
             The Psi4 Molecule object, which contains the positions,
             net charge, and net spin of atoms in the QM subsystem.
         """
-        geometrystring = """\n"""
         # make sure Drudes/virtual particles do not enter molecule.
-        # would need to change this if we needed QM virtual atoms 
-        # for some reason.
+        # might need to change this if we wanted QM ghost atoms.
         atoms = self._filtered_qm_atoms()
-        
+        geometrystring = """\n"""
+        geometrystring += str(self.charge) + " "
+        geometrystring += str(self.multiplicity) + "\n"
+        geometrystring += "symmetry c1\n"
+        geometrystring += "no_reorient\nno_com\n"
+        atoms = sorted(self.system.select("subsystem I"))
         for atom in atoms:
             geometrystring = (
                 geometrystring
@@ -141,14 +132,18 @@ class Psi4Interface(QMInterface):
                 + str(self.system.positions[atom][1]) + " "
                 + str(self.system.positions[atom][2]) + "\n"
             )
-        geometrystring += str(self.charge) + " "
-        geometrystring += str(self.multiplicity) + "\n"
-        # geometrystring += "symmetry c1\n"
-        geometrystring += "noreorient\nnocom\n"
-        return psi4.geometry(geometrystring)
+        molecule = psi4.geometry(geometrystring)
+        c1_molecule = molecule.clone()
+        c1_molecule._initial_cartesian = molecule._initial_cartesian.clone()
+        c1_molecule.set_geometry(c1_molecule._initial_cartesian)
+        c1_molecule.reset_point_group("c1")
+        c1_molecule.fix_orientation(True)
+        c1_molecule.fix_com(True)
+        c1_molecule.update_geometry()
+        return c1_molecule
 
     @system_cache("positions", "charges", "subsystems")
-    def _generate_external_potential(self) -> NDArray[np.float64] | None:
+    def _generate_external_potentials(self) -> list[Any] | None:
         r"""Generate the data structure needed to perform embedding.
 
         Returns:
@@ -156,20 +151,79 @@ class Psi4Interface(QMInterface):
             (:math:`e`) that will be electrostatically embedded by Psi4
             during calculations.
         """
-        external_potential = []
         embedding = sorted(self.system.select("subsystem II"))
+        external_potentials: list[Any] = []
+        point_charges = []
         for i in embedding:
-            external_potential.append(
-                (
-                    self.system.charges[i],
-                    self.system.positions[i, 0] * BOHR_PER_ANGSTROM,
-                    self.system.positions[i, 1] * BOHR_PER_ANGSTROM,
-                    self.system.positions[i, 2] * BOHR_PER_ANGSTROM,
-                ),
+            point_charges.append(
+                [self.system.charges[i],
+                 self.system.positions[i, 0] * BOHR_PER_ANGSTROM,
+                 self.system.positions[i, 1] * BOHR_PER_ANGSTROM,
+                 self.system.positions[i, 2] * BOHR_PER_ANGSTROM],
             )
-        if not external_potential:
+        if embedding:
+            external_potentials.append(np.array(point_charges))
+        else:
+            external_potentials.append(None)
+        # PyDFT-QMMM does not currently support diffuse embedding.
+        external_potentials.append(None)
+        if self.potentials:
+            numint = self._generate_numinthelper()
+            v_grid = self._generate_potential()
+            potential = numint.potential_integral(v_grid).np
+            external_potentials.append(potential)
+        else:
+            external_potentials.append(None)
+        if external_potentials is [None, None, None]:
             return None
-        return np.array(external_potential)
+        return external_potentials
+
+    @system_cache("positions", "elements", "subsystems")
+    def _generate_numinthelper(self) -> psi4.core.NumIntHelper:
+        """Generate the Psi4 NumIntHelper object.
+
+        Returns:
+            The Psi4 NumIntHelper object, which can evaluate integrals
+            for arbitrary potentials via numerical quadrature.
+        """
+        molecule = self._generate_molecule()
+        basis_set = psi4.core.BasisSet.build(
+            molecule,
+            "BASIS",
+            psi4.core.get_global_option("BASIS"),
+        )
+        grid = psi4.core.DFTGrid.build(molecule, basis_set)
+        numinthelper = psi4.core.NumIntHelper(grid)
+        return numinthelper
+
+    @system_cache("positions", "elements", "subsystems")
+    def _generate_potential(self) -> list[psi4.core.Vector]:
+        """Generate the potential grid from ElectronicPotential objects.
+
+        Returns:
+            A list of Psi4 Vector objects containing the potential
+            evaluated at the points on the Psi4 DFTGrid object.
+        """
+        numint = self._generate_numinthelper()
+        blocks = []
+        indices = []
+        i = 0
+        for block in numint.numint_grid().blocks():
+            x = block.x().np
+            y = block.y().np
+            z = block.z().np
+            blocks.append(np.stack((x, y, z), axis=-1))
+            indices.append(i)
+            i += block.npoints()
+        xyz = np.concatenate(tuple(blocks), axis=0)
+        v = np.zeros_like(xyz[:, 0])
+        for potential in self.potentials:
+            v += potential.compute_potential(
+                xyz / BOHR_PER_ANGSTROM,
+            ).flatten()
+        v_split = np.split(v, indices)
+        v_grid = [psi4.core.Vector.from_array(x) for x in v_split[1:]]
+        return v_grid
 
     def update_options(self, **kwargs: psi4_utils.Psi4Options) -> None:
         """Set additional options for Psi4.
@@ -229,23 +283,63 @@ class Psi4Potential(Psi4Interface, AtomicPotential):
             The forces (:math:`\mathrm{kJ\;mol^{-1}\;\mathring{A}^{-1}}`)
             acting on atoms in the system.
         """
+        qm_indices = self._filtered_qm_atoms()
+        forces_temp = np.zeros(self.system.positions.shape)
         wfn = self._generate_wavefunction()
-        forces = psi4.gradient(
+        grads = psi4.gradient(
             self.functional,
             ref_wfn=wfn,
         )
-        forces = forces.np * -KJMOL_PER_EH * BOHR_PER_ANGSTROM
-        forces_temp = np.zeros(self.system.positions.shape)
-        qm_indices = self._filtered_qm_atoms()
-        forces_temp[qm_indices, :] = forces
-        if self._generate_external_potential() is not None:
+        forces = grads.np * -KJMOL_PER_EH * BOHR_PER_ANGSTROM
+        forces_temp[qm_indices, :] += forces
+        if self._generate_external_potentials() is None:
+            return forces_temp
+        if self._generate_external_potentials()[0] is not None:
             embed_indices = sorted(self.system.select("subsystem II"))
-            forces = (
-                wfn.external_pot().gradient_on_charges().np
-                * -KJMOL_PER_EH * BOHR_PER_ANGSTROM
-            )
-            forces_temp[embed_indices, :] = forces
-        forces_temp = virtual_sites.distribute_forces(self.system,forces_temp)        
+            grads = wfn.external_pot().gradient_on_charges()
+            # `grads` will be `None` if a numerical gradient is
+            # performed in Psi4, and so the following block
+            # restores the analytic gradient on from and on the
+            # embedded point charges.  This requires at least Psi4 1.11.
+            if grads is None:
+                if not hasattr(
+                        wfn.external_pot(),
+                        "computePotentialGradients",
+                ):
+                    raise PyDFTQMMMException(
+                        textwrap.fill(
+                            "\nGradients on embedded point charges "
+                            "were not calculated, likely because Psi4 "
+                            "opted for finite-difference gradients.  "
+                            "PyDFT-QMMM can still calculate the "
+                            "gradients on embedded point charges, but "
+                            "only using Psi4 v1.11 or higher.  The "
+                            "current Psi4 installation does not meet "
+                            f"this requirement (v{psi4.__version__} is "
+                            "currently installed).",
+                        ),
+                    )
+                D = wfn.Da()
+                D.add(wfn.Db())
+                grads = wfn.external_pot().computePotentialGradients(
+                    wfn.basisset(),
+                    D,
+                )
+                forces = grads.np * -KJMOL_PER_EH * BOHR_PER_ANGSTROM
+                forces_temp[qm_indices, :] += forces
+                grads = wfn.external_pot().gradient_on_charges()
+            forces = grads.np * -KJMOL_PER_EH * BOHR_PER_ANGSTROM
+            forces_temp[embed_indices, :] += forces
+        if self._generate_external_potentials()[2] is not None:
+            numint = self._generate_numinthelper()
+            v_grid = self._generate_potential()
+            D = wfn.Da()
+            D.add(wfn.Db())
+            grads = numint.potential_gradient(v_grid, D)
+            forces = grads.np * -KJMOL_PER_EH * BOHR_PER_ANGSTROM
+            forces_temp[qm_indices, :] += forces
+        # this has to run after everything
+        forces_temp = virtual_sites.distribute_forces(self.system,forces_temp)
         return forces_temp
 
     def compute_components(self) -> dict[str, float]:
