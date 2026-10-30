@@ -168,7 +168,6 @@ def test_full_energy_gradient_before_freezing(drude_problem, step):
 def test_integrator_reuses_previous_qm_forces(drude_problem, monkeypatch):
     from pydft_qmmm import VerletIntegrator
     from pydft_qmmm.calculators import PotentialCalculator
-    from pydft_qmmm.plugins import Virtual
 
     calculator, adapter = drude_problem
     system = calculator.system
@@ -181,7 +180,6 @@ def test_integrator_reuses_previous_qm_forces(drude_problem, monkeypatch):
     # A small physical step; virtual sites are rebuilt before relaxation.
     system.masses[system.virtual_site_indices] = 0.1
     integrator = VerletIntegrator(0.1)
-    integrator.register_plugin(Virtual())
     integrator.register_plugin(plugin, 0)
     original_calculate = PotentialCalculator.calculate
     qm_calls = 0

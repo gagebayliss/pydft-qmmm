@@ -31,6 +31,7 @@ from .file_manager import load_system
 
 from pydft_qmmm.utils import load_omm_system
 from pydft_qmmm.utils import extract_virtual_sites
+from pydft_qmmm.utils.virtual_sites import compute_positions
 
 from pydft_qmmm.utils import system_cache
 
@@ -68,6 +69,9 @@ class System(Sequence[_SystemAtom]):
         atoms: The list of atoms that will comprise the system.
         box: The lattice vectors (:math:`\mathrm{\mathring{A}}`) of the
             box containing the system.
+        virtual_sites: Virtual site definitions for the system.
+        update_virtual_sites: Update virtual site positions whenever positions
+            change. Defaults to True.
     """
     positions: ObservedArray[Any, array_float] = field(
         default_factory=lambda: ObservedArray(np.empty((0, 3), float)),
@@ -125,7 +129,10 @@ class System(Sequence[_SystemAtom]):
             atoms: list[Atom],
             box: NDArray[np.float64] = np.zeros((3, 3)),
             virtual_sites: list[VirtualSite] | None = None,
+            *,
+            update_virtual_sites: bool = True,
     ) -> None:
+        self._update_virtual_sites = update_virtual_sites
         self._virtual_sites = None
         self._atoms = None
         self._system_atoms = None
@@ -139,9 +146,22 @@ class System(Sequence[_SystemAtom]):
         if virtual_sites is not None:
             self._setup_virtual_sites(virtual_sites)
 
+        if update_virtual_sites:
+            self.positions.register_notifier(self._update_virtual_site_positions)
+            self._update_virtual_site_positions(self.positions.base)
+
         # Delete residue_map cached property if residues changes.
         self.residues.register_notifier(_del_attr(self, "residue_map"))
 
+
+    def _update_virtual_site_positions(self, positions: NDArray[np.float64]) -> None:
+        """Update the backing array without recursively notifying observers.
+
+        Use the full positions array because notifications can originate from
+        a slice or an individual atom's position.
+        """
+        if len(self.virtual_site_indices):
+            self.positions.base[:] = compute_positions(self, self.positions.base)
 
     def __len__(self) -> int:
         """Get the number of atoms in the system.
@@ -274,6 +294,7 @@ class System(Sequence[_SystemAtom]):
         ]
         copied = System(
             atoms, self.box.base.copy(), deepcopy(self._virtual_sites),
+            update_virtual_sites=self._update_virtual_sites,
         )
         for name in self.__dataclass_fields__: # why do we do this?
             if name.startswith("virtual_"):
@@ -313,8 +334,10 @@ class System(Sequence[_SystemAtom]):
         ]
         virtual_sites = [self._virtual_sites[i] for i in v_idx]
         if keep_box:
-            return System(atoms,self._box,virtual_sites)
-        return System(atoms,np.zeros((3, 3)),virtual_sites)
+            return System(atoms, self._box, virtual_sites,
+                          update_virtual_sites=self._update_virtual_sites)
+        return System(atoms, np.zeros((3, 3)), virtual_sites,
+                      update_virtual_sites=self._update_virtual_sites)
 
     def index(self, atom: Any, start: int = 0, stop: int = -1) -> int:
         """Find the first index where the atom object is found.
@@ -345,7 +368,7 @@ class System(Sequence[_SystemAtom]):
             raise TypeError
 
     @staticmethod
-    def load(*args: str) -> System:
+    def load(*args: str, update_virtual_sites: bool = True) -> System:
         """Load a system from PDB files.
         Optionally, add forcefield XML files to add virtual sites.
 
@@ -354,18 +377,21 @@ class System(Sequence[_SystemAtom]):
                 element, name, residue, residue, name, and lattice
                 vector data; optionally also the XML file or files 
                 specifying a forcefield with virtual sites.
+            update_virtual_sites: Update virtual site positions on loading and
+                whenever positions change. Defaults to True.
 
         Returns:
             The system generated from the data in the PDB files.
         """
         pdb_filenames = [f for f in args if f.endswith('.pdb')]
         atoms, box = load_system(*pdb_filenames)
-        system = System(atoms,box)
+        system = System(atoms, box, update_virtual_sites=update_virtual_sites)
         virtual_sites = None
         xml_filenames = [f for f in args if f.endswith('.xml')]
         if len(xml_filenames):
             virtual_sites = System._load_virtual_sites(system,xml_filenames)
-            system = System(atoms, box, virtual_sites)
+            system = System(atoms, box, virtual_sites,
+                            update_virtual_sites=update_virtual_sites)
         return system 
 
     @staticmethod
