@@ -14,7 +14,6 @@ from pydft_qmmm import QMHamiltonian
 from pydft_qmmm import QMMMHamiltonian
 from pydft_qmmm.utils import ELEMENT_TO_MASS
 from pydft_qmmm.utils import Subsystem
-from pydft_qmmm.plugins import Virtual
 from pydft_qmmm.plugins import Stationary
 from pydft_qmmm.plugins import SETTLE
 
@@ -25,7 +24,7 @@ def test_virtual_io():
     )
     assert (len(system) // 5) == len(system.virtual_site_indices)
 
-def test_integrator_virtual_plugin_with_settle():
+def test_system_virtual_sites_with_settle():
     """This test covers virtual_sites.compute_positions also!
     """
     system = System.load(
@@ -45,7 +44,6 @@ def test_integrator_virtual_plugin_with_settle():
                 0.1,
             )
         integrator.register_plugin(Stationary(query), 0)
-    integrator.register_plugin(Virtual(),0)
     integrator.register_plugin(SETTLE())
 
     trans = np.array([1.0,1.0,1.0])
@@ -63,8 +61,9 @@ def test_integrator_virtual_plugin_with_settle():
     positions, velocities = integrator.integrate(system)
     system.positions[:] = positions
     positions, velocities = integrator.integrate(system)
+    system.positions = positions
     ref_pos = reference_calculate_positions(positions)
-    np.testing.assert_allclose(positions,ref_pos)
+    np.testing.assert_allclose(system.positions, ref_pos)
 
 def reference_calculate_positions(water_positions):
     pos = water_positions.copy()
@@ -243,3 +242,39 @@ def test_calculator_spce_mm_only():
     print("subsystem III")
     print(forces[6:])
     np.save(f"tests/spce_data/reference/{sys_name}_forces.npy",forces)
+
+@pytest.mark.parametrize("update_virtual_sites", [True, False])
+@pytest.mark.parametrize("edit", ["assign", "slice", "atom", "inplace"])
+def test_position_observer(update_virtual_sites, edit):
+    system = System.load(
+        "tests/swm4ndp_data/hoh.pdb",
+        "tests/swm4ndp_data/swm4ndp.xml",
+        update_virtual_sites=update_virtual_sites,
+    )
+    original_site = system.positions[3].copy()
+    notifications = []
+    system.positions.register_notifier(
+        lambda _: notifications.append(np.array(system.positions)),
+    )
+    if edit == "assign":
+        positions = np.array(system.positions)
+        positions[0] += 1.0
+        system.positions = positions
+    elif edit == "slice":
+        system.positions[0, :] = system.positions[0] + 1.0
+    elif edit == "atom":
+        system[0].position[:] = system[0].position + 1.0
+    else:
+        system.positions[:3] += 1.0
+    expected = (reference_calculate_positions(np.asarray(system.positions))[3]
+                if update_virtual_sites else original_site)
+    np.testing.assert_allclose(system.positions[3], expected)
+    assert notifications
+    for positions in notifications:
+        np.testing.assert_allclose(positions[3], expected)
+    copied = system.copy()
+    copied.positions[0] += 1.0
+    expected_copy = (reference_calculate_positions(np.asarray(copied.positions))[3]
+                     if update_virtual_sites else expected)
+    np.testing.assert_allclose(copied.positions[3], expected_copy)
+    np.testing.assert_allclose(system.positions[3], expected)

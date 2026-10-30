@@ -19,7 +19,6 @@ from pydft_qmmm.plugins import CalculatorCenter
 from pydft_qmmm.plugins import CalculatorWrap
 from pydft_qmmm.plugins import IntegratorWrap 
 from pydft_qmmm.plugins import Stationary
-from pydft_qmmm.plugins import Virtual
 from pydft_qmmm.plugins import Plugin
 
 if TYPE_CHECKING:
@@ -90,7 +89,6 @@ class Simulation(Loggable):
             pass
             self.calculator.register_plugin(CalculatorCenter(), 0)
 
-        integrator.register_plugin(Virtual(),0) 
 
         self.system = system
         self.integrator = integrator
