@@ -153,13 +153,12 @@ class System(Sequence[_SystemAtom]):
         # Delete residue_map cached property if residues changes.
         self.residues.register_notifier(_del_attr(self, "residue_map"))
 
-
     def _update_virtual_site_positions(self, positions: NDArray[np.float64]) -> None:
-        """Update the backing array without recursively notifying observers.
-
-        Use the full positions array because notifications can originate from
-        a slice or an individual atom's position.
+        """Update virtual site positions when any other positions change.
         """
+        # prevents recursion. this works w/ openmm because it runs first
+        # (since it is registered when system is constructed, and
+        # openmm's notifiers are registered at a later time)
         if len(self.virtual_site_indices):
             self.positions.base[:] = compute_positions(self, self.positions.base)
 
