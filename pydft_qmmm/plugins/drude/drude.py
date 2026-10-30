@@ -247,11 +247,11 @@ class CalculatorDrudeSCF(CalculatorPlugin):
             # Use the existing group labels rather than inspecting backends.
             mm_calculators = [
                 calc for calc in calculator.calculators
-                if calc.theory_level == "MM"
+                if calc.calculator_group == "MM"
             ]
             qm_calculators = [
                 calc for calc in calculator.calculators
-                if calc.theory_level == "QM"
+                if calc.calculator_group == "QM"
             ]
             if (len(mm_calculators) != 1 or len(qm_calculators) != 1
                     or len(calculator.calculators) != 2):
@@ -266,7 +266,7 @@ class CalculatorDrudeSCF(CalculatorPlugin):
                 raise ValueError("All calculators must share the same system.")
             self.mm_calculator = mm_calculators[0]
             qm_calculator = qm_calculators[0]
-        elif calculator.theory_level != "MM":
+        elif calculator.calculator_group != "MM":
             raise ValueError("Drude relaxation requires an MM calculator.")
 
         omm_system = load_omm_system(calculator.system, self.forcefield)
