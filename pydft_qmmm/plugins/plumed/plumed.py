@@ -1,5 +1,4 @@
-"""A plugin interface to the Plumed enhanced sampling suite.
-"""
+"""A plugin interface to the PLUMED enhanced sampling suite."""
 from __future__ import annotations
 
 __all__ = ["PLUMED"]
@@ -14,6 +13,7 @@ from pydft_qmmm.utils import DependencyImportError
 from pydft_qmmm.calculators.calculator import CalculatorPlugin
 
 if TYPE_CHECKING:
+    from typing import Any
     from collections.abc import Callable
     from pydft_qmmm.calculators import Calculator
     from pydft_qmmm.calculators import Results
@@ -49,10 +49,11 @@ class PLUMED(CalculatorPlugin):
         self.input_commands = input_commands
         self.log_file = log_file
         self.plumed = plumed.Plumed()
-        self.plumed.cmd("setMDEngine", "python")
+        self.plumed.cmd("setMDEngine", "pydft_qmmm")
         self.arbitrary_cvs = arbitrary_cvs
         self.frame = 0
-        self._bypass_plumed = False
+        self.bypass_plumed = False
+        self._initialized = False
 
     def modify(
             self,
@@ -65,16 +66,27 @@ class PLUMED(CalculatorPlugin):
                 modified by the plugin.
         """
         self.calculator = calculator
+        self._initialize_plumed()
+
+    def _initialize_plumed(self) -> None:
+        """Initialize the engine against this plugin's own calculator."""
+        if self._initialized:
+            return
+        if self.plumed is None:
+            import plumed
+            self.plumed = plumed.Plumed()
+            self.plumed.cmd("setMDEngine", "pydft_qmmm") # from the AI - why do we do this?
         self.plumed.cmd("setNatoms", len(self.calculator.system))
         self.plumed.cmd("setMDLengthUnits", 1/10)
         self.plumed.cmd("setMDTimeUnits", 1/1000)
         self.plumed.cmd("setMDMassUnits", 1.)
         self.plumed.cmd("setTimestep", 1.) # but we use other timesteps sometimes. This might be a problem
-        self.plumed.cmd("setKbT", 1.)
+        self.plumed.cmd("setKbT", 1.) # atomic units? but is this correct?
         self.plumed.cmd("setLogFile", self.log_file) 
         self.plumed.cmd("init")
         for line in self.input_commands.split("\n"):
             self.plumed.cmd("readInputLine", line)
+        self._initialized = True
 
     def _modify_calculate(
             self,
@@ -98,11 +110,12 @@ class PLUMED(CalculatorPlugin):
             results = calculate(return_forces, return_components)
             time_1 = time.perf_counter()
             
-            if self._bypass_plumed:
+            if self.bypass_plumed:
                 # arbitrary CVs call calculator,
                 # infinite recursion if we don't do this
                 return results
 
+            self._initialize_plumed() # a little sloppy to have this in two places but fine
             self.plumed.cmd("setStep", self.frame)
             self.frame += 1
             self.plumed.cmd("setBox", self.calculator.system.box.T)
@@ -119,9 +132,9 @@ class PLUMED(CalculatorPlugin):
                 cv_values = np.zeros((len(self.arbitrary_cvs),))
                 cv_forces = np.zeros((len(self.arbitrary_cvs),))
                 for i, (cv_name, cv) in enumerate(self.arbitrary_cvs.items()):
-                    self._bypass_plumed = True
+                    self.bypass_plumed = True
                     cv_values[i] = cv.get_scalar_cv(self.calculator,results)
-                    self._bypass_plumed = False
+                    self.bypass_plumed = False
                     self.plumed.cmd(f"setExtraCV {cv_name}", cv_values[i:i+1])
                     self.plumed.cmd(f"setExtraCVForce {cv_name}", cv_forces[i:i+1])
             time_3 = time.perf_counter()

@@ -81,7 +81,7 @@ def openmm_interface_factory(
         if np.any(system.box):
             omm_topology.setPeriodicBoxVectors(omm_box)
         omm_modeller = _build_omm_modeller(system, omm_topology)
-        omm_forcefield = _build_omm_forcefield(forcefield, omm_modeller)
+        omm_forcefield = _build_omm_forcefield(forcefield)
         base_system = _build_omm_system(omm_forcefield, omm_modeller)
     elif not any(x):
         try:
@@ -127,8 +127,8 @@ def openmm_interface_factory(
     )
     _adjust_system(system, base_system)
     aux_system = _empty_omm_system(system)
-    base_context = _build_omm_context(base_system, omm_modeller,platform)
-    aux_context = _build_omm_context(aux_system, omm_modeller,platform)
+    base_context = _build_omm_context(base_system, omm_modeller, platform)
+    aux_context = _build_omm_context(aux_system, omm_modeller, platform)
     wrapper = openmm_interface.OpenMMPotential(
         system,
         base_context=base_context,
@@ -202,7 +202,6 @@ def _build_omm_modeller(
 
 def _build_omm_forcefield(
         forcefield: list[str],
-        omm_modeller: openmm.app.Modeller,
 ) -> openmm.app.ForceField:
     """Build the OpenMM ForceField object.
 
@@ -215,7 +214,6 @@ def _build_omm_forcefield(
         The internal representation of the force field for OpenMM.
     """
     omm_forcefield = openmm.app.ForceField(*forcefield)
-    omm_modeller.addExtraParticles(omm_forcefield)
     return omm_forcefield
 
 
@@ -241,6 +239,7 @@ def _build_omm_system(
             in omm_modeller.topology.residues()
         },
     )
+    omm_modeller.addExtraParticles(omm_forcefield)
     return omm_system
 
 
