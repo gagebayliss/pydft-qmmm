@@ -81,7 +81,6 @@ class Psi4Interface(QMInterface):
                 QM calculations.
         """
         self.potentials.append(potential)
-        self.update_options(perturb_h=True, perturb_with="EMBPOT")
 
     @system_cache("positions", "charges", "elements", "subsystems", "box")
     def _generate_wavefunction(self) -> psi4.core.Wavefunction:

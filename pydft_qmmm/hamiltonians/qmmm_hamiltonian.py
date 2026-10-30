@@ -201,8 +201,8 @@ class QMMMHamiltonian(CouplingHamiltonian):
             )
             calculator.calculators.extend(
                 [
-                    PotentialCalculator(system, pme_nuclei),
-                    PotentialCalculator(system, pme_exclusion),
+                    PotentialCalculator(system, pme_nuclei, calculator_group="external"),
+                    PotentialCalculator(system, pme_exclusion, calculator_group="external"),
                 ],
             )
             pme_electrons = PMEElectronicPotential(

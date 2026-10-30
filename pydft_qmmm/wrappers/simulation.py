@@ -68,6 +68,11 @@ class Simulation(Loggable):
         super().__init__(**kwargs)
         for handler in self.handlers:
             logger.addHandler(handler)
+
+        # TODO: find more robust way to do this
+        self._write_interval_1 = kwargs.get("log_write_interval",1)
+        self._write_interval_2 = kwargs.get("csv_write_interval",1)
+
         # Set calculator and build if necessary.
         if calculator is not None:
             self.calculator = calculator
@@ -175,8 +180,10 @@ class Simulation(Loggable):
 
         self.system.forces = results.forces
 
-        if self._frame % self._write_interval == 0:
-            # we don't need to calculate this every timestep
+        condition_1 = self._frame % self._write_interval_1 == 0
+        condition_2 = self._frame % self._write_interval_2 == 0
+        if condition_1 or condition_2:
+            # we don't need to calculate this every timestep, expensive w/ MM only
             kinetic_energy = self.integrator.compute_kinetic_energy(
                 self.system,
             )
