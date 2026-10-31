@@ -278,3 +278,56 @@ def test_position_observer(update_virtual_sites, edit):
                      if update_virtual_sites else expected)
     np.testing.assert_allclose(copied.positions[3], expected_copy)
     np.testing.assert_allclose(system.positions[3], expected)
+
+
+@pytest.mark.parametrize("edit", ["assign", "slice", "atom", "inplace"])
+def test_virtual_positions_stay_synchronized_with_openmm(edit):
+    import openmm
+    from openmm import unit
+    from pydft_qmmm.interfaces.openmm.openmm_interface import OpenMMInterface
+
+    system = System.load(
+        "tests/swm4ndp_data/hoh.pdb",
+        "tests/swm4ndp_data/swm4ndp.xml",
+    )
+    contexts = []
+    integrators = []
+    for _ in range(2):
+        backend = openmm.System()
+        for _ in system:
+            backend.addParticle(1.0)
+        backend.setParticleMass(3, 0.0)
+        backend.setVirtualSite(
+            3, openmm.ThreeParticleAverageSite(
+                0, 1, 2, 0.589781071, 0.2051094645, 0.2051094645,
+            ),
+        )
+        integrator = openmm.VerletIntegrator(0.001)
+        integrators.append(integrator)
+        contexts.append(openmm.Context(
+            backend, integrator, openmm.Platform.getPlatformByName("Reference"),
+        ))
+    interface = OpenMMInterface(
+        system, *contexts,
+        np.ones(system.positions.shape),
+        np.ones(system.positions.shape),
+        np.ones(system.positions.shape),
+    )
+    interface.update_positions(np.array(system.positions))
+    if edit == "assign":
+        positions = np.array(system.positions)
+        positions[0] += 1.0
+        system.positions = positions
+    elif edit == "slice":
+        system.positions[0, :] = system.positions[0] + 1.0
+    elif edit == "atom":
+        system[0].position[:] = system[0].position + 1.0
+    else:
+        system.positions[:3] += 1.0
+    expected = reference_calculate_positions(np.asarray(system.positions))
+    np.testing.assert_allclose(system.positions[3], expected[3])
+    for context in contexts:
+        positions = context.getState(getPositions=True).getPositions(asNumpy=True)
+        np.testing.assert_allclose(
+            positions.value_in_unit(unit.angstrom), system.positions,
+        )

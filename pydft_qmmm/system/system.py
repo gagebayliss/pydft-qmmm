@@ -147,6 +147,8 @@ class System(Sequence[_SystemAtom]):
             self._setup_virtual_sites(virtual_sites)
 
         if update_virtual_sites:
+            # Register before backend observers so they receive corrected sites
+            # during the same notification pass.
             self.positions.register_notifier(self._update_virtual_site_positions)
             self._update_virtual_site_positions(self.positions.base)
 
@@ -157,8 +159,9 @@ class System(Sequence[_SystemAtom]):
     def _update_virtual_site_positions(self, positions: NDArray[np.float64]) -> None:
         """Update the backing array without recursively notifying observers.
 
-        Use the full positions array because notifications can originate from
-        a slice or an individual atom's position.
+        Later observers (including OpenMM) receive the corrected backing array
+        in the ongoing notification pass. Use the full positions array because
+        notifications can originate from a slice or an individual atom's position.
         """
         if len(self.virtual_site_indices):
             self.positions.base[:] = compute_positions(self, self.positions.base)
