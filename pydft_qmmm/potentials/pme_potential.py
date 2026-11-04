@@ -204,7 +204,7 @@ class PMENuclearPotential(AtomicPotential, HelPMEPyInterface):
         Returns:
             The integer nuclear charges of the Subsystem I atoms.
         """
-        nuclei = sorted(self.system.select("subsystem I"))
+        nuclei = sorted(self.system.select("subsystem I and not element Ep Lp"))
         elements = list(ELEMENT_TO_MASS.keys())
         nuclear_charges = [elements.index(self.system.elements[atom])
                            for atom in nuclei]
