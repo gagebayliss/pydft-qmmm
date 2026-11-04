@@ -97,119 +97,16 @@ class CachedForceCalculator(Calculator):
             results.components = {self.name: energy}
         return results
 
-
 class IntegratorDrudeSCF(IntegratorPlugin):
-    """
-    Args:
-        calculator: MM calculator or a composite containing one MM and
-            one QM calculator. Both must share a system.
-        forcefield: XML forcefield files used to identify Drude particles.
-        force_tolerance: Maximum residual force component in kJ/mol/angstrom.
-        algorithm: any scipy.optimize algorithm not requiring a Hessian.
-        max_iterations: Maximum Drude optimization iterations per step.
-    """
-
     def __init__(
             self,
-            calculator: Calculator,
             forcefield: list[str] | str,
             force_tolerance: float = 0.10,
-            algorithm: str = "BFGS",
+            algorithm: str = "L-BFGS-B",
             max_iterations: int = 50,
             strict: bool = False,
     ) -> None:
-        self.calculator = calculator
-        self.mm_calculator = calculator
-        self.strict = strict
-        self.qm_force_cache: QMForceCache | None = None
-        qm_calculator = None
-        if isinstance(calculator, CompositeCalculator):
-            # Use the existing group labels rather than inspecting backends.
-            mm_calculators = [
-                calc for calc in calculator.calculators
-                if calc.calculator_group == "MM"
-            ]
-            qm_calculators = [
-                calc for calc in calculator.calculators
-                if calc.calculator_group == "QM"
-            ]
-            if (len(mm_calculators) != 1 or len(qm_calculators) != 1
-                    or len(calculator.calculators) != 2):
-                raise ValueError(
-                    "Drude relaxation requires one MM and one QM calculator; "
-                    "additional energy terms need an explicit force split.",
-                )
-            if any(
-                calc.system is not calculator.system
-                for calc in calculator.calculators
-            ):
-                raise ValueError("All calculators must share the same system.")
-            self.mm_calculator = mm_calculators[0]
-            qm_calculator = qm_calculators[0]
-        elif calculator.calculator_group != "MM":
-            raise ValueError("Drude relaxation requires an MM calculator.")
-        omm_system = load_omm_system(calculator.system, forcefield)
-        self.drude_data = extract_drude_data(omm_system)
-        if self.drude_data is None or not len(self.drude_data):
-            raise ValueError("The forcefield must contain Drude particles.")
-        external_potential = None
-        if qm_calculator is not None:
-            self.qm_force_cache = QMForceCache()
-            external_potential = CachedForceCalculator(
-                calculator.system, self.qm_force_cache,
-            )
-            drude_scf = DrudeSCF(
-                DrudeCalculator(
-                    self.mm_calculator, self.drude_data, external_potential,
-                ),
-                max_iterations=max_iterations,
-                algorithm=algorithm,
-                force_tolerance=force_tolerance,
-            )
-            qm_scf = SCFAdapter(qm_calculator)
-            self.scf = CompositeSCF(
-               [qm_scf, drude_scf],
-               objective_index=0,
-               tolerance=1e-6,
-               maxiter=10,
-            )
-            qm_calculator.register_plugin(self.qm_force_cache)
-        else:
-            self.scf = DrudeSCF(
-                DrudeCalculator(
-                    self.mm_calculator, self.drude_data,
-                ),
-                max_iterations=max_iterations,
-                algorithm=algorithm,
-                force_tolerance=force_tolerance,
-            )
-
-    def _modify_integrate(
-            self,
-            integrate: Callable[[System], Returns],
-    ) -> Callable[[System], Returns]:
-        """Return relaxed positions without mutating the input system."""
-        def inner(system: System) -> Returns:
-            if system is not self.calculator.system:
-                raise ValueError(
-                    "Integrator and Drude calculator must share a system.",
-                )
-            positions, velocities = integrate(system)
-            original_positions = system.positions.base.copy()
-            system.positions[:] = positions
-            
-            energy, converged = self.scf.solve()
-            if not converged and self.strict:
-                raise RuntimeError(
-                    "Drude SCF did not reach the force tolerance."
-                )
-            positions = system.positions.base.copy()
-            system.positions[:] = original_positions 
-
-            velocities[self.drude_data.drude_indices] = 0.0 
-
-            return positions, velocities
-        return inner
+        raise NotImplementedError()
 
 
 class CalculatorDrudeSCF(CalculatorPlugin):
@@ -237,14 +134,15 @@ class CalculatorDrudeSCF(CalculatorPlugin):
         self.algorithm = algorithm
         self.max_iterations = max_iterations
         self.strict = strict 
+        self._bypass_plugin = False
 
     def modify(self, calculator: Calculator):
         self.calculator = calculator
         self.mm_calculator = calculator
         self.qm_force_cache: QMForceCache | None = None
         qm_calculator = None
+
         if isinstance(calculator, CompositeCalculator):
-            # Use the existing group labels rather than inspecting backends.
             mm_calculators = [
                 calc for calc in calculator.calculators
                 if calc.calculator_group == "MM"
@@ -253,19 +151,25 @@ class CalculatorDrudeSCF(CalculatorPlugin):
                 calc for calc in calculator.calculators
                 if calc.calculator_group == "QM"
             ]
-            if (len(mm_calculators) != 1 or len(qm_calculators) != 1
-                    or len(calculator.calculators) != 2):
-                raise ValueError(
-                    "Drude relaxation requires one MM and one QM calculator; "
-                    "additional energy terms need an explicit force split.",
-                )
+            external_potential_calculators = [
+                calc for calc in calculator.calulators
+                if calc.calculator_group.lower() == "external"
+            ]
+            if len(mm_calculators) != 1 or len(qm_calculators) != 1:
+                raise ValueError("...")
             if any(
                 calc.system is not calculator.system
                 for calc in calculator.calculators
             ):
                 raise ValueError("All calculators must share the same system.")
             self.mm_calculator = mm_calculators[0]
-            qm_calculator = qm_calculators[0]
+
+            qm_calculator = CompositeCalculator( # for PME potentials
+                calculator.system,
+                [calc for calc in calculator.calculators
+                    if calc.calculator_group != "MM"]
+            )
+
         elif calculator.calculator_group != "MM":
             raise ValueError("Drude relaxation requires an MM calculator.")
 
@@ -291,9 +195,9 @@ class CalculatorDrudeSCF(CalculatorPlugin):
             qm_scf = SCFAdapter(qm_calculator)
             self.scf = CompositeSCF(
                [qm_scf, drude_scf],
-               objective_index=0,
-               tolerance=1e-6,
-               maxiter=10,
+               objective_index=0, # use QM energy as objective function
+               tolerance=1e-6, # QM energy should not change by more than this after Drude iterations
+               maxiter=10, # 10 macroiterations
             )
             qm_calculator.register_plugin(self.qm_force_cache)
 
@@ -317,14 +221,18 @@ class CalculatorDrudeSCF(CalculatorPlugin):
                 return_components: bool = True,
             ) -> Results:
             
-            energy, converged = self.scf.solve()
-            if not converged and self.strict:
-                raise RuntimeError(
-                    "Drude SCF did not reach the force tolerance."
-                )
+            if not self._bypass_plugin: # prevent recursion when using MM calculator
+                self._bypass_plugin = True
+                energy, converged = self.scf.solve()
+                if not converged and self.strict:
+                    raise RuntimeError(
+                        "Drude SCF did not reach the force tolerance."
+                    )
+                self._bypass_plugin = False
+                
             # TODO
             # can avoid this extra calculation by
-            # passing forces and components from self.scf.solve()...
+            # using systemcache on calculate
             results = calculate(return_forces,return_components)
             return results
         return inner

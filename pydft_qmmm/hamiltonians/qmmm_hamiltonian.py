@@ -145,6 +145,22 @@ class QMMMHamiltonian(CouplingHamiltonian):
         if self.partition is not None:
             if self.cutoff is not None:
                 self.partition.cutoff = self.cutoff
+                if self.cutoff < 10.0 and (
+                    self.force_matrix[Subsystem.I][Subsystem.III]
+                        == TheoryLevel.QM
+                    ):
+                    # TODO: check this number with more thorough benchmarks
+                    # is it an issue if we're not using Drudes?
+                    warn(
+                        (
+                            "cutoff values smaller than 10.0 Å can result"
+                            "in truncation errors when using the default"
+                            "value for pme_alpha (3.5/nm), especially when"
+                            "using Drude oscillators."
+                        ),
+                        RuntimeWarning,
+                    )
+
             calculator.register_plugin(self.partition)
         for calc in calculator.calculators:
             if isinstance(calc, PotentialCalculator):
@@ -172,7 +188,8 @@ class QMMMHamiltonian(CouplingHamiltonian):
             if self.pme_alpha is None:
                 self.pme_alpha = pme_alpha
             if self.pme_gridnumber is None:
-                self.pme_gridnumber = tuple(advisable_gridnumber.tolist())
+#                 self.pme_gridnumber = tuple(advisable_gridnumber.tolist())
+                self.pme_gridnumber = tuple(pme_gridnumber)
             elif isinstance(self.pme_gridnumber, int):
                 self.pme_gridnumber = (self.pme_gridnumber,)*3
             if self.pme_spline_order is None:
@@ -193,6 +210,7 @@ class QMMMHamiltonian(CouplingHamiltonian):
                 self.pme_gridnumber,
                 self.pme_spline_order,
             )
+            # is this correct? no self. prefix
             pme_exclusion = PMEExcludedPotential(
                 system,
                 pme_alpha,

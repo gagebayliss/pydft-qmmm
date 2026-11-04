@@ -319,7 +319,7 @@ class Psi4Potential(Psi4Interface, AtomicPotential):
                             "currently installed).",
                         ),
                     )
-                D = wfn.Da()
+                D = wfn.Da().clone()
                 D.add(wfn.Db())
                 grads = wfn.external_pot().computePotentialGradients(
                     wfn.basisset(),
@@ -333,7 +333,7 @@ class Psi4Potential(Psi4Interface, AtomicPotential):
         if self._generate_external_potentials()[2] is not None:
             numint = self._generate_numinthelper()
             v_grid = self._generate_potential()
-            D = wfn.Da()
+            D = wfn.Da().clone()
             D.add(wfn.Db())
             grads = numint.potential_gradient(v_grid, D)
             forces = grads.np * -KJMOL_PER_EH * BOHR_PER_ANGSTROM

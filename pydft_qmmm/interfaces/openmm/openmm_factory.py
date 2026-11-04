@@ -62,7 +62,7 @@ def openmm_interface_factory(
             (:math:`\mathrm{\mathring(A)^{-1}}`) at which to truncate
             close-range non-bonded interactions.
         pme_gridnumber: The number of grid points to include along each
-            lattice edge in PME summation.
+            lattice edge in PME summation. 
         pme_alpha: The Gaussian width parameter in Ewald summation
             (:math:`\mathrm{nm^{-1}}`).
         platform: The platform to use for the OpenMM kernels. One of
@@ -73,8 +73,27 @@ def openmm_interface_factory(
     """
     if isinstance(forcefield, str):
         forcefield = [forcefield]
-    if isinstance(pme_gridnumber, int):
+
+    if pme_alpha is None:
+        pme_alpha = 3.5 / openmm.unit.nanometer
+
+    if pme_gridnumber is None:
+        conservative_gridnumber = np.ciel(
+            compute_lattice_constants(system.box)[0:3],
+        ).astype(int) * 4
+
+        # for efficient FFT
+        pme_gridnumber = tuple([
+            int(2**np.floor(np.log(num)/np.log(2)))
+            for num in conservative_gridnumber
+        ])
+        # 64^3 for boxes [16, 32) A,
+        # 128^3 for boxes [32, 64) A 
+        # etc.
+
+    elif isinstance(pme_gridnumber, int):
         pme_gridnumber = (pme_gridnumber,) * 3
+
     omm_box = [openmm.Vec3(*x)*openmm.unit.angstrom for x in system.box.T]
     if all(x := [fh.endswith(".xml") for fh in forcefield]):
         omm_topology = _build_omm_topology(system, forcefield)
