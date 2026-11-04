@@ -97,6 +97,17 @@ class CachedForceCalculator(Calculator):
             results.components = {self.name: energy}
         return results
 
+class IntegratorDrudeSCF(IntegratorPlugin):
+    def __init__(
+            self,
+            forcefield: list[str] | str,
+            force_tolerance: float = 0.10,
+            algorithm: str = "L-BFGS-B",
+            max_iterations: int = 50,
+            strict: bool = False,
+    ) -> None:
+        raise NotImplementedError()
+
 
 class CalculatorDrudeSCF(CalculatorPlugin):
     """
@@ -144,7 +155,7 @@ class CalculatorDrudeSCF(CalculatorPlugin):
                 calc for calc in calculator.calulators
                 if calc.calculator_group.lower() == "external"
             ]
-            if (len(mm_calculators) != 1 or len(qm_calculators) != 1:
+            if len(mm_calculators) != 1 or len(qm_calculators) != 1:
                 raise ValueError("...")
             if any(
                 calc.system is not calculator.system
