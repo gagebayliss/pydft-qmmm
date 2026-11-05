@@ -80,8 +80,12 @@ def _virtual_site_batches(system: System) -> list[tuple]:
         if not rows:
             continue
         site_indices = xp.asarray([indices[i] for i in rows], dtype=xp.int64)
-        parent_indices = xp.asarray([parents[i] for i in rows], dtype=xp.int64)
-        parent_weights = xp.asarray([weights[i] for i in rows], dtype=xp.float64)
+        parent_indices = xp.stack(
+            [xp.asarray(parents[i],dtype=xp.int64) for i in rows]
+        )
+        parent_weights = xp.stack(
+            [xp.asarray(weights[i],dtype=xp.float64) for i in rows]
+        )
         batches.append((site_indices, parent_indices, parent_weights))
     return batches
 
