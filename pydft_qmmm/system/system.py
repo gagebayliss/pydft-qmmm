@@ -31,7 +31,6 @@ from .file_manager import load_system
 
 from pydft_qmmm.utils import load_omm_system
 from pydft_qmmm.utils import extract_virtual_sites
-from pydft_qmmm.utils.virtual_sites import compute_positions
 from pydft_qmmm.utils import VirtualSiteHelper
 
 from pydft_qmmm.utils import system_cache

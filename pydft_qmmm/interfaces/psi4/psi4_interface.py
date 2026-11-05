@@ -21,7 +21,6 @@ from pydft_qmmm.utils import BOHR_PER_ANGSTROM
 from pydft_qmmm.utils import KJMOL_PER_EH
 from pydft_qmmm.utils import PyDFTQMMMException
 from pydft_qmmm.utils import system_cache
-from pydft_qmmm.utils import virtual_sites
 
 if TYPE_CHECKING:
     from typing import Any

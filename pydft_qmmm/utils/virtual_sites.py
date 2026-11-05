@@ -81,43 +81,47 @@ def extract_virtual_sites(system: openmm.System) -> tuple[VirtualSite]:
 
 
 class VirtualSiteHelper:
+    """Manages updating virtual site positions and propagating forces.
+    """
     def __init__(
             self,
             system: System,
     ) -> None:
-    indices = list(system.virtual_site_indices)
-    types = list(system.virtual_types)
-    parents = list(system.virtual_parents)
-    weights = list(system.virtual_parent_weights)
+        self.system = system
 
-    if not (len(indices) == len(types) == len(parents) == len(weights)):
-        raise ValueError("Inconsistent virtual-site metadata lengths")
+        indices = list(system.virtual_site_indices)
+        types = list(system.virtual_types)
+        parents = list(system.virtual_parents)
+        weights = list(system.virtual_parent_weights)
 
-    virtual_indices = set(map(int, indices))
-    groups = {"two_average": [], "three_average": []}
+        if not (len(indices) == len(types) == len(parents) == len(weights)):
+            raise ValueError("Inconsistent virtual-site metadata lengths")
 
-    for i, site_type in enumerate(types):
-        if site_type not in groups:
-            raise NotImplementedError(f"Unsupported virtual-site type: {site_type}")
-        if any(int(parent) in virtual_indices for parent in parents[i]):
-            raise NotImplementedError("Virtual sites depending on other virtual sites")
-        expected = 2 if site_type == "two_average" else 3
-        if len(parents[i]) != expected or len(weights[i]) != expected:
-            raise ValueError(f"Invalid {site_type} site at index {indices[i]}")
-        groups[site_type].append(i)
+        virtual_indices = set(map(int, indices))
+        groups = {"two_average": [], "three_average": []}
 
-    self.batches = []
-    for rows in groups.values():
-        if not rows:
-            continue
-        site_indices = xp.asarray([indices[i] for i in rows], dtype=xp.int64)
-        parent_indices = xp.stack(
-            [xp.asarray(parents[i],dtype=xp.int64) for i in rows]
-        )
-        parent_weights = xp.stack(
-            [xp.asarray(weights[i],dtype=xp.float64) for i in rows]
-        )
-        self.batches.append((site_indices, parent_indices, parent_weights))
+        for i, site_type in enumerate(types):
+            if site_type not in groups:
+                raise NotImplementedError(f"Unsupported virtual-site type: {site_type}")
+            if any(int(parent) in virtual_indices for parent in parents[i]):
+                raise NotImplementedError("Virtual sites depending on other virtual sites")
+            expected = 2 if site_type == "two_average" else 3
+            if len(parents[i]) != expected or len(weights[i]) != expected:
+                raise ValueError(f"Invalid {site_type} site at index {indices[i]}")
+            groups[site_type].append(i)
+
+        self.batches = []
+        for rows in groups.values():
+            if not rows:
+                continue
+            site_indices = xp.asarray([indices[i] for i in rows], dtype=xp.int64)
+            parent_indices = xp.stack(
+                [xp.asarray(parents[i],dtype=xp.int64) for i in rows]
+            )
+            parent_weights = xp.stack(
+                [xp.asarray(weights[i],dtype=xp.float64) for i in rows]
+            )
+            self.batches.append((site_indices, parent_indices, parent_weights))
 
     def compute_positions(self, positions: NDArray[float64]) -> NDArray[float64]:
         """Computes virtual-site coordinates.

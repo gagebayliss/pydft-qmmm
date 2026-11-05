@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .constants import KB
-from . import virtual_sites
 
 if TYPE_CHECKING:
     from types import MappingProxyType
