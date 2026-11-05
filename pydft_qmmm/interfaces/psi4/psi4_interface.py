@@ -21,7 +21,6 @@ from pydft_qmmm.utils import BOHR_PER_ANGSTROM
 from pydft_qmmm.utils import KJMOL_PER_EH
 from pydft_qmmm.utils import PyDFTQMMMException
 from pydft_qmmm.utils import system_cache
-from pydft_qmmm.utils import virtual_sites
 
 if TYPE_CHECKING:
     from typing import Any
@@ -324,7 +323,7 @@ class Psi4Potential(Psi4Interface, AtomicPotential):
             forces = grads.np * -KJMOL_PER_EH * BOHR_PER_ANGSTROM
             forces_temp[qm_indices, :] += forces
         # this has to run after everything
-        forces_temp = virtual_sites.distribute_forces(self.system,forces_temp)
+        forces_temp = self.system.vsite_helper.distribute_forces(forces_temp)
         return forces_temp
 
     def compute_components(self) -> dict[str, float]:

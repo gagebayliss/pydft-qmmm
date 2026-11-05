@@ -2,7 +2,7 @@
 """
 from __future__ import annotations
 
-__author__ = "Jesse McDaniel, John Pederson"
+__author__ = "Jesse McDaniel, John Pederson, Gage Bayliss"
 
 from .constants import *
 from .descriptor import *

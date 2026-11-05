@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .constants import KB
-from . import virtual_sites
 
 if TYPE_CHECKING:
     from types import MappingProxyType
@@ -200,8 +199,7 @@ def numerical_gradient(
             # Perform first finite difference displacement.
             calculator.system.positions[atom, j] += dist
             calculator.system.positions[:] =\
-                virtual_sites.compute_positions(
-                    calculator.system, 
+                calculator.system.vsite_helper.compute_positions(
                     calculator.system.positions
                 )
             if components is not None:
@@ -214,8 +212,7 @@ def numerical_gradient(
             # Perform second finite difference displacement.
             calculator.system.positions[atom, j] -= 2*dist
             calculator.system.positions[:] =\
-                virtual_sites.compute_positions(
-                    calculator.system, 
+                calculator.system.vsite_helper.compute_positions(
                     calculator.system.positions
                 )
             if components is not None:
@@ -228,8 +225,7 @@ def numerical_gradient(
             grad[i, j] = (ref_1 - ref_0) / (2*dist)
             calculator.system.positions[atom, j] += dist
             calculator.system.positions[:] =\
-                virtual_sites.compute_positions(
-                    calculator.system, 
+                calculator.system.vsite_helper.compute_positions(
                     calculator.system.positions
                 )
     return grad

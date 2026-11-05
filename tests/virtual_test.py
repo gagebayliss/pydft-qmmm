@@ -46,13 +46,13 @@ def test_system_virtual_sites_with_settle():
         integrator.register_plugin(Stationary(query), 0)
     integrator.register_plugin(SETTLE())
 
-    trans = np.array([1.0,1.0,1.0])
+    trans = np.array([0.01,0.01,0.01])
     zero_zero_zero = np.array([0.0,0.0,0.0])
 
     system.velocities[:] = np.array([
         trans,
         trans,
-        trans + np.array([1.0,0.0,0.0]),
+        trans + np.array([0.01,0.0,0.0]),
         zero_zero_zero,
         zero_zero_zero,
     ])
@@ -86,7 +86,7 @@ def test_three_average_distribute_forces():
         arbitrary_force,
         zero_zero_zero,
     ])
-    propagated_forces = virtual_sites.distribute_forces(system,forces)
+    propagated_forces = system.vsite_helper.distribute_forces(forces)
     reference_propagated_forces = reference_distribute_forces(system,forces)
     np.testing.assert_allclose(propagated_forces,reference_propagated_forces)
 
