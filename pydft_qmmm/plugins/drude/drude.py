@@ -151,10 +151,6 @@ class CalculatorDrudeSCF(CalculatorPlugin):
                 calc for calc in calculator.calculators
                 if calc.calculator_group == "QM"
             ]
-            external_potential_calculators = [
-                calc for calc in calculator.calulators
-                if calc.calculator_group.lower() == "external"
-            ]
             if len(mm_calculators) != 1 or len(qm_calculators) != 1:
                 raise ValueError("...")
             if any(

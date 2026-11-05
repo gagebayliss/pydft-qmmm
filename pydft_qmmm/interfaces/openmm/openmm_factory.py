@@ -18,6 +18,7 @@ import openmm.app
 import openmm.unit
 
 from pydft_qmmm.utils import DependencyImportError
+from pydft_qmmm.utils import compute_lattice_constants
 
 from . import openmm_interface
 
@@ -78,7 +79,7 @@ def openmm_interface_factory(
         pme_alpha = 3.5 / openmm.unit.nanometer
 
     if pme_gridnumber is None:
-        conservative_gridnumber = np.ciel(
+        conservative_gridnumber = np.ceil(
             compute_lattice_constants(system.box)[0:3],
         ).astype(int) * 4
 
