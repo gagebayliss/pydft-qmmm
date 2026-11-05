@@ -183,7 +183,7 @@ class PMENuclearPotential(AtomicPotential, HelPMEPyInterface):
         nuclear_charges = self.get_nuclear_charges()
         potential = self.compute_potential_and_derivs()
         nuclear_forces = -(potential[:, 1:].T * nuclear_charges).T
-        nuclei = sorted(self.system.select("subsystem I"))
+        nuclei = sorted(self.system.select("subsystem I and not element Ep Lp"))
         forces = np.zeros(self.system.positions.shape)
         forces[nuclei] = nuclear_forces
         return forces
@@ -204,8 +204,10 @@ class PMENuclearPotential(AtomicPotential, HelPMEPyInterface):
         Returns:
             The integer nuclear charges of the Subsystem I atoms.
         """
+        # ignore virtual particles, which QM also ignores
         nuclei = sorted(self.system.select("subsystem I and not element Ep Lp"))
-        elements = list(ELEMENT_TO_MASS.keys())
+        elements = list(ELEMENT_TO_MASS.keys()) 
+        # atomic number
         nuclear_charges = [elements.index(self.system.elements[atom])
                            for atom in nuclei]
         return nuclear_charges
@@ -220,7 +222,7 @@ class PMENuclearPotential(AtomicPotential, HelPMEPyInterface):
             (:math:`\mathrm{kJ\;mol^{-1}\;e^{-1}\;\mathring{A}^{-1}}`),
             corresponding to the provided coordinates.
         """
-        nuclei = sorted(self.system.select("subsystem I"))
+        nuclei = sorted(self.system.select("subsystem I and not element Ep Lp"))
         excluded = sorted(self.system.select("not subsystem III"))
         coordinates = self.system.positions[nuclei]
         potential = np.zeros((len(coordinates), 4))
@@ -266,7 +268,7 @@ class PMEExcludedPotential(PMENuclearPotential):
         Returns:
             The energy (:math:`\mathrm{kJ\;mol^{-1}}`) of the potential.
         """
-        nuclei = sorted(self.system.select("subsystem I"))
+        nuclei = sorted(self.system.select("subsystem I and not element Ep Lp"))
         charges = self.system.charges[nuclei]
         potential = self.compute_potential_and_derivs()
         return -float(potential[:, 0].dot(charges))
