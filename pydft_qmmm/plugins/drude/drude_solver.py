@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 class DrudeCalculator:
-    """Expose Drude coordinates as an energy minimization problem.
+    """Expose parent-relative Drude displacements for energy minimization.
 
     Args:
         calculator: Calculator for the base energy and forces.
@@ -32,13 +32,14 @@ class DrudeCalculator:
     ) -> None:
         self.calculator = calculator
         self.indices = drude_data.drude_indices.copy()
+        self.parent_indices = drude_data.parent_indices.copy()
         self.external_potential = external_potential
 
     def calculate(
             self,
             positions: NDArray[np.float64],
     ) -> tuple[float, NDArray[np.float64]]:
-        """Return combined energy and its gradient over Drude coordinates."""
+        """Return combined energy and its gradient over Drude displacements."""
         self.state = positions
         results = self.calculator.calculate(return_components=False)
         energy = results.energy
@@ -53,16 +54,18 @@ class DrudeCalculator:
 
     @property
     def state(self) -> NDArray[np.float64]:
-        """Return a copy of the flattened Drude coordinates."""
+        """Return the flattened displacements from the parent atoms."""
         return np.asarray(
-            self.calculator.system.positions[self.indices],
+            self.calculator.system.positions[self.indices]
+            - self.calculator.system.positions[self.parent_indices],
         ).reshape(-1).copy()
 
     @state.setter
     def state(self, coordinates: NDArray[np.float64]) -> None:
         coordinates = np.asarray(coordinates, dtype=float)
-        self.calculator.system.positions[self.indices] = coordinates.reshape(
-            -1, 3,
+        self.calculator.system.positions[self.indices] = (
+            self.calculator.system.positions[self.parent_indices]
+            + coordinates.reshape(-1, 3)
         )
 
 class DrudeSCF:

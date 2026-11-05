@@ -110,6 +110,35 @@ def test_drude_metadata_units(drude_dimer):
     assert extract_drude_data(openmm.System()) is None
 
 
+def test_drude_relaxation_with_coordinate_wrapping():
+    """Trial displacements remain valid when calculation shifts the system."""
+    from pydft_qmmm.calculators import Results
+
+    system = SimpleNamespace(positions=np.array([
+        [10.0, 20.0, 30.0], [10.1, 20.1, 30.1],
+    ]))
+    data = SimpleNamespace(drude_indices=np.array([1]),
+                           parent_indices=np.array([0]))
+
+    class WrappedCalculator:
+        def __init__(self):
+            self.system = system
+
+        def calculate(self, return_components=False):
+            system.positions[:] -= 10.0
+            displacement = system.positions[1] - system.positions[0]
+            forces = np.zeros((2, 3))
+            forces[1] = -2 * displacement
+            return Results(float(np.sum(displacement**2)), forces)
+
+    adapter = DrudeCalculator(WrappedCalculator(), data)
+    np.testing.assert_allclose(adapter.state, 0.1)
+    energy, converged = DrudeSCF(adapter, force_tolerance=1e-9).solve()
+    assert converged
+    assert energy == pytest.approx(0.0, abs=1e-18)
+    np.testing.assert_allclose(adapter.state, 0.0, atol=1e-9)
+
+
 def test_composite_scf_requires_converged_children():
     class Solver:
         def __init__(self, converged):
@@ -143,7 +172,7 @@ def test_solver_checks_final_forces_and_restores_accepted_point(
     solver = DrudeSCF(adapter, force_tolerance=1e-10)
     _, converged = solver.solve()
     assert not converged  # A success flag cannot replace the force check.
-    np.testing.assert_array_equal(adapter.state, accepted)
+    np.testing.assert_allclose(adapter.state, accepted, atol=1e-14, rtol=0)
 
 
 
@@ -208,7 +237,7 @@ def test_integrator_reuses_previous_qm_forces(drude_problem, monkeypatch):
     try:
         system.positions[:] = positions
         _, gradient = plugin.scf.calculator.calculate(
-            positions[adapter.indices].reshape(-1),
+            adapter.state,
         )
         assert np.max(np.abs(gradient)) <= 1e-5
     finally:
