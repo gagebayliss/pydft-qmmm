@@ -32,6 +32,7 @@ from .file_manager import load_system
 from pydft_qmmm.utils import load_omm_system
 from pydft_qmmm.utils import extract_virtual_sites
 from pydft_qmmm.utils.virtual_sites import compute_positions
+from pydft_qmmm.utils import VirtualSiteHelper
 
 from pydft_qmmm.utils import system_cache
 
@@ -136,6 +137,7 @@ class System(Sequence[_SystemAtom]):
         self._virtual_sites = None
         self._atoms = None
         self._system_atoms = None
+        self.vsite_helper = None
 
         for name, field_ in getattr(self, "__dataclass_fields__").items():
             setattr(self, "_" + name, field_.default_factory())
@@ -160,7 +162,7 @@ class System(Sequence[_SystemAtom]):
         # (since it is registered when system is constructed, and
         # openmm's notifiers are registered at a later time)
         if len(self.virtual_site_indices):
-            self.positions.base[:] = compute_positions(self, self.positions.base)
+            self.positions.base[:] = self.vsite_helper.compute_positions(self.positions.base)
 
     def __len__(self) -> int:
         """Get the number of atoms in the system.
@@ -438,6 +440,9 @@ class System(Sequence[_SystemAtom]):
                     
             setattr(self, "_" + name, ObservedArray(temp))
         self._virtual_sites = virtual_sites
+
+        # construct VirtualSiteHelper object.
+        self.vsite_helper = VirtualSiteHelper(self)
 
 
     def select(self, query: str) -> frozenset[int]:

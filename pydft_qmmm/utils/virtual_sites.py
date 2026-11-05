@@ -4,8 +4,7 @@ from __future__ import annotations
 __all__ = [
     "VirtualSite",
     "extract_virtual_sites",
-    "compute_positions",
-    "distribute_forces",
+    "VirtualSiteHelper",
 ]
 
 from dataclasses import dataclass
@@ -52,83 +51,6 @@ class VirtualSite:
     parent_weights: tuple[Any, ...]
 
 
-def _virtual_site_batches(system: System) -> list[tuple]:
-    """Group independent virtual sites by type for vectorized operations."""
-    indices = list(system.virtual_site_indices)
-    types = list(system.virtual_types)
-    parents = list(system.virtual_parents)
-    weights = list(system.virtual_parent_weights)
-
-    if not (len(indices) == len(types) == len(parents) == len(weights)):
-        raise ValueError("Inconsistent virtual-site metadata lengths")
-
-    virtual_indices = set(map(int, indices))
-    groups = {"two_average": [], "three_average": []}
-
-    for i, site_type in enumerate(types):
-        if site_type not in groups:
-            raise NotImplementedError(f"Unsupported virtual-site type: {site_type}")
-        if any(int(parent) in virtual_indices for parent in parents[i]):
-            raise NotImplementedError("Virtual sites depending on other virtual sites")
-        expected = 2 if site_type == "two_average" else 3
-        if len(parents[i]) != expected or len(weights[i]) != expected:
-            raise ValueError(f"Invalid {site_type} site at index {indices[i]}")
-        groups[site_type].append(i)
-
-    batches = []
-    for rows in groups.values():
-        if not rows:
-            continue
-        site_indices = xp.asarray([indices[i] for i in rows], dtype=xp.int64)
-        parent_indices = xp.stack(
-            [xp.asarray(parents[i],dtype=xp.int64) for i in rows]
-        )
-        parent_weights = xp.stack(
-            [xp.asarray(weights[i],dtype=xp.float64) for i in rows]
-        )
-        batches.append((site_indices, parent_indices, parent_weights))
-    return batches
-
-
-def compute_positions(system: System, positions: NDArray[float64]) -> NDArray[float64]:
-    """Compute virtual-site coordinates in batches grouped by site type.
-    """
-    new_positions = xp.asarray(positions).copy()
-    if len(new_positions) != len(system):
-        raise ValueError("Position array length does not match system")
-
-    for indices, parents, weights in _virtual_site_batches(system):
-        # (n_sites, n_parents, 3) -> (n_sites, 3)
-        new_positions[indices] = xp.sum(
-            new_positions[parents] * weights[:, :, None], axis=1
-        )
-        if USE_CUPY:
-            new_positions = xp.asnumpy(new_positions)
-    return new_positions
-
-
-def distribute_forces(system: System, forces: NDArray[float64]) -> NDArray[float64]:
-    """Backpropagate virtual-site forces to parents with indexed scatter-add.
-
-    Does not modify input. As in the original implementation, virtual-site
-    forces are not zeroed.
-    """
-    new_forces = xp.asarray(forces).copy()
-    if len(new_forces) != len(system):
-        raise ValueError("Force array length does not match system")
-
-    for indices, parents, weights in _virtual_site_batches(system):
-        # Flatten to permit duplicate parent indices, which ordinary indexed
-        # '+=' does NOT accumulate correctly for NumPy or CuPy.
-        contributions = (
-            new_forces[indices, None, :] * weights[:, :, None]
-        ).reshape(-1, 3)
-        xp.add.at(new_forces, parents.ravel(), contributions)
-        if USE_CUPY:
-            new_forces = xp.asnumpy(new_forces)
-    return new_forces
-
-
 def extract_virtual_sites(system: openmm.System) -> tuple[VirtualSite]:
     """Extract supported virtual sites from an OpenMM System."""
     sites = []
@@ -156,3 +78,93 @@ def extract_virtual_sites(system: openmm.System) -> tuple[VirtualSite]:
                 f"Unsupported OpenMM virtual-site type: {type(site).__name__}",
             )
     return tuple(sites)
+
+
+class VirtualSiteHelper:
+    def __init__(
+            self,
+            system: System,
+    ) -> None:
+    indices = list(system.virtual_site_indices)
+    types = list(system.virtual_types)
+    parents = list(system.virtual_parents)
+    weights = list(system.virtual_parent_weights)
+
+    if not (len(indices) == len(types) == len(parents) == len(weights)):
+        raise ValueError("Inconsistent virtual-site metadata lengths")
+
+    virtual_indices = set(map(int, indices))
+    groups = {"two_average": [], "three_average": []}
+
+    for i, site_type in enumerate(types):
+        if site_type not in groups:
+            raise NotImplementedError(f"Unsupported virtual-site type: {site_type}")
+        if any(int(parent) in virtual_indices for parent in parents[i]):
+            raise NotImplementedError("Virtual sites depending on other virtual sites")
+        expected = 2 if site_type == "two_average" else 3
+        if len(parents[i]) != expected or len(weights[i]) != expected:
+            raise ValueError(f"Invalid {site_type} site at index {indices[i]}")
+        groups[site_type].append(i)
+
+    self.batches = []
+    for rows in groups.values():
+        if not rows:
+            continue
+        site_indices = xp.asarray([indices[i] for i in rows], dtype=xp.int64)
+        parent_indices = xp.stack(
+            [xp.asarray(parents[i],dtype=xp.int64) for i in rows]
+        )
+        parent_weights = xp.stack(
+            [xp.asarray(weights[i],dtype=xp.float64) for i in rows]
+        )
+        self.batches.append((site_indices, parent_indices, parent_weights))
+
+    def compute_positions(self, positions: NDArray[float64]) -> NDArray[float64]:
+        """Computes virtual-site coordinates.
+
+        Args:
+            positions: Array containing positions to be updated.
+
+        Returns:
+            Array with updated virtual site positions.
+        """
+        new_positions = xp.asarray(positions).copy()
+        if len(new_positions) != len(self.system):
+            raise ValueError("Position array length does not match system")
+
+        for indices, parents, weights in self.batches:
+            # (n_sites, n_parents, 3) -> (n_sites, 3)
+            new_positions[indices] = xp.sum(
+                new_positions[parents] * weights[:, :, None], axis=1
+            )
+        if USE_CUPY:
+            new_positions = xp.asnumpy(new_positions)
+        return new_positions
+
+    def distribute_forces(self, forces: NDArray[float64]) -> NDArray[float64]:
+        """Propagate virtual-site forces to parents.
+        Forces remain on virtual sites, so this should not be called multiple
+        times on the same array or on forces that have already been distributed.
+        (note: OpenMM distributes virtual site forces).
+
+        Args:
+            forces: Array containing forces to be distributed.
+
+        Returns:
+            Array with propagated virtual site forces..
+        """
+        new_forces = xp.asarray(forces).copy()
+        if len(new_forces) != len(self.system):
+            raise ValueError("Force array length does not match system")
+
+        for indices, parents, weights in self.batches:
+            # Flatten to permit duplicate parent indices, which ordinary indexed
+            # '+=' does NOT accumulate correctly for NumPy or CuPy.
+            contributions = (
+                new_forces[indices, None, :] * weights[:, :, None]
+            ).reshape(-1, 3)
+            xp.add.at(new_forces, parents.ravel(), contributions)
+        if USE_CUPY:
+            new_forces = xp.asnumpy(new_forces)
+        return new_forces
+
