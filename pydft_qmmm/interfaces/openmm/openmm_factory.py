@@ -50,6 +50,7 @@ def openmm_interface_factory(
         pme_gridnumber: int | tuple[int, int, int] | None = None,
         pme_alpha: float | int | None = None,
         platform: str = "CPU",
+        properties: dict[str,Any] | None = None,
 ) -> openmm_interface.OpenMMPotential:
     r"""Build the interface to OpenMM.
 
@@ -147,8 +148,8 @@ def openmm_interface_factory(
     )
     _adjust_system(system, base_system)
     aux_system = _empty_omm_system(system)
-    base_context = _build_omm_context(base_system, omm_modeller, platform)
-    aux_context = _build_omm_context(aux_system, omm_modeller, platform)
+    base_context = _build_omm_context(base_system, omm_modeller, platform, properties)
+    aux_context = _build_omm_context(aux_system, omm_modeller, platform, properties)
     wrapper = openmm_interface.OpenMMPotential(
         system,
         base_context=base_context,
@@ -373,6 +374,7 @@ def _build_omm_context(
         omm_system: openmm.System,
         omm_modeller: openmm.app.Modeller,
         platform: str = "CPU",
+        properties: dict[str,Any] | None = None,
 ) -> openmm.Context:
     """Build the OpenMM Context object.
 
@@ -391,9 +393,10 @@ def _build_omm_context(
     omm_integrator = openmm.VerletIntegrator(1. * openmm.unit.femtosecond)
     omm_platform = openmm.Platform.getPlatformByName(platform)
     if platform.upper() == "CUDA" or platform.upper() == "OPENCL":
-        properties = {
-            "Precision" : "double", # necessary for converging Drudes w/ CUDA
-        } # maybe shouldn't be a default... can be a big performance hit
+        if properties is None:
+            properties = {
+                "Precision" : "double", # necessary for converging Drudes w/ CUDA
+            } # maybe shouldn't be a default... can be a big performance hit
         omm_context = openmm.Context(
             omm_system,
             omm_integrator,
