@@ -10,6 +10,7 @@ __all__ = [
 from dataclasses import dataclass
 from typing import Any
 from typing import TYPE_CHECKING
+from pydft_qmmm.utils import system_cache
 
 try:
     import cupy as xp
@@ -89,10 +90,15 @@ class VirtualSiteHelper:
     ) -> None:
         self.system = system
 
-        indices = list(system.virtual_site_indices)
-        types = list(system.virtual_types)
-        parents = list(system.virtual_parents)
-        weights = list(system.virtual_parent_weights)
+    # TODO: check that this actually works as intended...
+    # it does!
+    # TODO: check that this retains speedup
+    @system_cache("virtual_site_indices","virtual_types","virtual_parents","virtual_parent_weights")
+    def _get_batches(self):
+        indices = list(self.system.virtual_site_indices)
+        types = list(self.system.virtual_types)
+        parents = list(self.system.virtual_parents)
+        weights = list(self.system.virtual_parent_weights)
 
         if not (len(indices) == len(types) == len(parents) == len(weights)):
             raise ValueError("Inconsistent virtual-site metadata lengths")
@@ -110,7 +116,7 @@ class VirtualSiteHelper:
                 raise ValueError(f"Invalid {site_type} site at index {indices[i]}")
             groups[site_type].append(i)
 
-        self.batches = []
+        batches = []
         for rows in groups.values():
             if not rows:
                 continue
@@ -121,7 +127,8 @@ class VirtualSiteHelper:
             parent_weights = xp.stack(
                 [xp.asarray(weights[i],dtype=xp.float64) for i in rows]
             )
-            self.batches.append((site_indices, parent_indices, parent_weights))
+            batches.append((site_indices, parent_indices, parent_weights))
+        return batches
 
     def compute_positions(self, positions: NDArray[float64]) -> NDArray[float64]:
         """Computes virtual-site coordinates.
@@ -136,7 +143,7 @@ class VirtualSiteHelper:
         if len(new_positions) != len(self.system):
             raise ValueError("Position array length does not match system")
 
-        for indices, parents, weights in self.batches:
+        for indices, parents, weights in self._get_batches():
             # (n_sites, n_parents, 3) -> (n_sites, 3)
             new_positions[indices] = xp.sum(
                 new_positions[parents] * weights[:, :, None], axis=1
@@ -161,7 +168,7 @@ class VirtualSiteHelper:
         if len(new_forces) != len(self.system):
             raise ValueError("Force array length does not match system")
 
-        for indices, parents, weights in self.batches:
+        for indices, parents, weights in self._get_batches():
             # Flatten to permit duplicate parent indices, which ordinary indexed
             # '+=' does NOT accumulate correctly for NumPy or CuPy.
             contributions = (

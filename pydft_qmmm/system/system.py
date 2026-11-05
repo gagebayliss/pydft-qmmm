@@ -136,7 +136,7 @@ class System(Sequence[_SystemAtom]):
         self._virtual_sites = None
         self._atoms = None
         self._system_atoms = None
-        self.vsite_helper = None
+        self.vsite_helper = VirtualSiteHelper(self)
 
         for name, field_ in getattr(self, "__dataclass_fields__").items():
             setattr(self, "_" + name, field_.default_factory())
@@ -441,9 +441,6 @@ class System(Sequence[_SystemAtom]):
                     
             setattr(self, "_" + name, ObservedArray(temp))
         self._virtual_sites = virtual_sites
-
-        # construct VirtualSiteHelper object.
-        self.vsite_helper = VirtualSiteHelper(self)
 
 
     def select(self, query: str) -> frozenset[int]:
