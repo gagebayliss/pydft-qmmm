@@ -19,6 +19,7 @@ import openmm.unit
 
 from pydft_qmmm.utils import DependencyImportError
 from pydft_qmmm.utils import compute_lattice_constants
+from pydft_qmmm.utils import extract_virtual_sites
 
 from . import openmm_interface
 
@@ -158,6 +159,9 @@ def openmm_interface_factory(
         aux_energy_group_force_mask=np.ones(system.positions.shape),
         aux_forces_group_force_mask=np.ones(system.positions.shape),
     )
+    ### add virtual sites to PyDFT System object
+    system.build_virtual_sites(extract_virtual_sites(base_system))
+
     return wrapper
 
 

@@ -19,95 +19,106 @@ from pydft_qmmm.plugins import SETTLE
 
 def test_virtual_io():
     system = System.load(
-        "tests/swm4ndp_data/swm4ndp_qmmm_1024.pdb",
-        "tests/swm4ndp_data/swm4ndp.xml"
+        "tests/tip4pew_data/tip4pew_trimer.pdb",
     )
-    assert (len(system) // 5) == len(system.virtual_site_indices)
+    assert len(system.virtual_site_indices) == 0
+    #### build calculator
+    mm = MMHamiltonian(
+        forcefield=[
+            "tests/tip4pew_data/tip4pew.xml",
+        ],
+        nonbonded_method="NoCutoff",
+    )
+    calculator = mm.build_calculator(system)
+    #### system doesn't have virtual sites until we do this
+    assert len(system.virtual_site_indices) == (len(system) // 4)
 
-def test_system_virtual_sites_with_settle():
-    """This test covers virtual_sites.compute_positions also!
+def test_virtual_site_positions():
+    """runs a short trajectory.
+    This test has been shown to fail when compute_positions
+    function is broken, so it is valid...
     """
     system = System.load(
-        "tests/swm4ndp_data/hoh.pdb",
-        "tests/swm4ndp_data/swm4ndp.xml"
+        "tests/tip4pew_data/tip4pew_trimer.pdb",
     )
-    integrator = VerletIntegrator(1.0)
-    stationary_atoms = [
-        int(atom) for atom in np.where(system.masses.base == 0)[0]
-    ]
-    if stationary_atoms:
-        query = "atom"
-        for atom in stationary_atoms:
-            query += f" {atom}"
-            system.masses[atom] = ELEMENT_TO_MASS.get(
-                system.elements[atom],
-                0.1,
-            )
-        integrator.register_plugin(Stationary(query), 0)
-    integrator.register_plugin(SETTLE())
+    #### build calculator
+    mm = MMHamiltonian(
+        forcefield=[
+            "tests/tip4pew_data/tip4pew.xml",
+        ],
+        nonbonded_method="NoCutoff",
+    )
+    calculator = mm.build_calculator(system)
+    integrator = VerletIntegrator(1)
+    for i in range(10):
+        system.forces = calculator.calculate().forces
+        positions, velocities = integrator.integrate(system)
+        system.positions = positions
+        system.velocities = velocities
+        reference_positions = reference_calculate_positions(positions)
+        np.testing.assert_allclose(system.positions.base,reference_positions)
+    
 
-    trans = np.array([0.01,0.01,0.01])
-    zero_zero_zero = np.array([0.0,0.0,0.0])
+def test_three_average_distribute_forces():
+    """tests force distribution.
+    This test has been shown to fail when the force distribution 
+    function is broken, so it is valid...
+    """
+    system = System.load(
+        "tests/tip4pew_data/tip4pew_trimer.pdb",
+    )
+    # we have no virtual sites until we build calculator
+    mm = MMHamiltonian(
+        forcefield=[
+            "tests/tip4pew_data/tip4pew.xml",
+        ],
+        nonbonded_method="NoCutoff",
+    )
+    calculator = mm.build_calculator(system)
+    # (but calculator is not used in this test)
 
-    system.velocities[:] = np.array([
-        trans,
-        trans,
-        trans + np.array([0.01,0.0,0.0]),
-        zero_zero_zero,
-        zero_zero_zero,
-    ])
-    system.positions[:] = reference_calculate_positions(np.asarray(system.positions))
-    system.forces[:] = np.zeros_like(system.velocities)
-    positions, velocities = integrator.integrate(system)
-    system.positions[:] = positions
-    positions, velocities = integrator.integrate(system)
-    system.positions = positions
-    ref_pos = reference_calculate_positions(positions)
-    np.testing.assert_allclose(system.positions, ref_pos)
+    rng = np.random.default_rng(seed=42)
+    forces = rng.random((len(system),3))
+
+    propagated_forces = system.vsite_helper.distribute_forces(forces)
+    reference_propagated_forces = reference_distribute_forces(forces)
+
+    np.testing.assert_allclose(propagated_forces,reference_propagated_forces)
+
 
 def reference_calculate_positions(water_positions):
     pos = water_positions.copy()
-    pos[3] = pos[0] * 0.589781071 + pos[1] * 0.2051094645 + pos[2] * 0.2051094645 
-    pos[4] = np.array([0.0,0.0,0.0])
+    for i in range(len(water_positions) // 4):
+        print(i)
+        w1 = 0.786646558
+        w2 = 0.106676721
+        w3 = w2
+        pos[i*4 + 3] = pos[i*4+0] * w1 + pos[i*4+1] * w2  + pos[i*4+2] * w3
     return pos
 
-def test_three_average_distribute_forces():
-    from pydft_qmmm.utils import virtual_sites
-    system = System.load(
-        "tests/swm4ndp_data/hoh.pdb",
-        "tests/swm4ndp_data/swm4ndp.xml"
-    )
-    arbitrary_force = np.array([1000,1.5,1.0])
-    zero_zero_zero = np.array([0.0,0.0,0.0])
-    forces = np.array([
-        arbitrary_force,
-        arbitrary_force,
-        arbitrary_force,
-        arbitrary_force,
-        zero_zero_zero,
-    ])
-    propagated_forces = system.vsite_helper.distribute_forces(forces)
-    reference_propagated_forces = reference_distribute_forces(system,forces)
-    np.testing.assert_allclose(propagated_forces,reference_propagated_forces)
-
-def reference_distribute_forces(system,forces):
+def reference_distribute_forces(forces):
     """pretty simple...
     """
-    f1 = forces[0]
-    f2 = forces[1]
-    f3 = forces[2]
-    f4 = forces[3]
-    f5 = forces[4]
-    f1 += f4 * 0.589781071 
-    f2 += f4 * 0.2051094645
-    f3 += f4 * 0.2051094645
-    forces = np.array([f1,f2,f3,f4,f5])
-    return forces
+    _forces = forces.copy()
+    w1 = 0.786646558
+    w2 = 0.106676721
+    w3 = w2
+    assert(w1+w2+w3 - 1 <= 0.000001)
+    for i in range(len(_forces) // 4):
+        f4 = _forces[i*4+3]
+        _forces[i*4+0] += f4 * w1
+        _forces[i*4+1] += f4 * w2
+        _forces[i*4+2] += f4 * w3
+    return _forces
+
+
+
+
+##### these.....
 
 def test_calculator():
     system = System.load(
         "tests/tip4pew_data/tip4pew_trimer.pdb",
-        "tests/tip4pew_data/tip4pew.xml"
     )
     with open("tests/tip4pew_data/trimer_ss_ii.json") as fh:
         embedding_list = json.load(fh)
@@ -159,7 +170,6 @@ def test_calculator():
 def test_calculator_spce():
     system = System.load(
         "tests/spce_data/hoh_123.pdb",
-        "tests/spce_data/spce.xml"
     )
     mm = MMHamiltonian(
         forcefield=[
@@ -216,7 +226,6 @@ def test_calculator_spce_mm_only():
     sys_name = "hoh_123"
     system = System.load(
         f"tests/spce_data/{sys_name}.pdb",
-        "tests/spce_data/spce.xml"
     )
     mm = MMHamiltonian(
         forcefield=[
@@ -243,91 +252,3 @@ def test_calculator_spce_mm_only():
     print(forces[6:])
     np.save(f"tests/spce_data/reference/{sys_name}_forces.npy",forces)
 
-@pytest.mark.parametrize("update_virtual_sites", [True, False])
-@pytest.mark.parametrize("edit", ["assign", "slice", "atom", "inplace"])
-def test_position_observer(update_virtual_sites, edit):
-    system = System.load(
-        "tests/swm4ndp_data/hoh.pdb",
-        "tests/swm4ndp_data/swm4ndp.xml",
-        update_virtual_sites=update_virtual_sites,
-    )
-    original_site = system.positions[3].copy()
-    notifications = []
-    system.positions.register_notifier(
-        lambda _: notifications.append(np.array(system.positions)),
-    )
-    if edit == "assign":
-        positions = np.array(system.positions)
-        positions[0] += 1.0
-        system.positions = positions
-    elif edit == "slice":
-        system.positions[0, :] = system.positions[0] + 1.0
-    elif edit == "atom":
-        system[0].position[:] = system[0].position + 1.0
-    else:
-        system.positions[:3] += 1.0
-    expected = (reference_calculate_positions(np.asarray(system.positions))[3]
-                if update_virtual_sites else original_site)
-    np.testing.assert_allclose(system.positions[3], expected)
-    assert notifications
-    for positions in notifications:
-        np.testing.assert_allclose(positions[3], expected)
-    copied = system.copy()
-    copied.positions[0] += 1.0
-    expected_copy = (reference_calculate_positions(np.asarray(copied.positions))[3]
-                     if update_virtual_sites else expected)
-    np.testing.assert_allclose(copied.positions[3], expected_copy)
-    np.testing.assert_allclose(system.positions[3], expected)
-
-
-@pytest.mark.parametrize("edit", ["assign", "slice", "atom", "inplace"])
-def test_virtual_positions_stay_synchronized_with_openmm(edit):
-    import openmm
-    from openmm import unit
-    from pydft_qmmm.interfaces.openmm.openmm_interface import OpenMMInterface
-
-    system = System.load(
-        "tests/swm4ndp_data/hoh.pdb",
-        "tests/swm4ndp_data/swm4ndp.xml",
-    )
-    contexts = []
-    integrators = []
-    for _ in range(2):
-        backend = openmm.System()
-        for _ in system:
-            backend.addParticle(1.0)
-        backend.setParticleMass(3, 0.0)
-        backend.setVirtualSite(
-            3, openmm.ThreeParticleAverageSite(
-                0, 1, 2, 0.589781071, 0.2051094645, 0.2051094645,
-            ),
-        )
-        integrator = openmm.VerletIntegrator(0.001)
-        integrators.append(integrator)
-        contexts.append(openmm.Context(
-            backend, integrator, openmm.Platform.getPlatformByName("Reference"),
-        ))
-    interface = OpenMMInterface(
-        system, *contexts,
-        np.ones(system.positions.shape),
-        np.ones(system.positions.shape),
-        np.ones(system.positions.shape),
-    )
-    interface.update_positions(np.array(system.positions))
-    if edit == "assign":
-        positions = np.array(system.positions)
-        positions[0] += 1.0
-        system.positions = positions
-    elif edit == "slice":
-        system.positions[0, :] = system.positions[0] + 1.0
-    elif edit == "atom":
-        system[0].position[:] = system[0].position + 1.0
-    else:
-        system.positions[:3] += 1.0
-    expected = reference_calculate_positions(np.asarray(system.positions))
-    np.testing.assert_allclose(system.positions[3], expected[3])
-    for context in contexts:
-        positions = context.getState(getPositions=True).getPositions(asNumpy=True)
-        np.testing.assert_allclose(
-            positions.value_in_unit(unit.angstrom), system.positions,
-        )

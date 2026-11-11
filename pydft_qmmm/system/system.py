@@ -29,8 +29,6 @@ from .selection_utils import FAST_KEYWORDS
 from .selection_utils import SLOW_KEYWORDS
 from .file_manager import load_system
 
-from pydft_qmmm.utils import load_omm_system
-from pydft_qmmm.utils import extract_virtual_sites
 from pydft_qmmm.utils import VirtualSiteHelper
 
 from pydft_qmmm.utils import system_cache
@@ -70,8 +68,6 @@ class System(Sequence[_SystemAtom]):
         box: The lattice vectors (:math:`\mathrm{\mathring{A}}`) of the
             box containing the system.
         virtual_sites: Virtual site definitions for the system.
-        update_virtual_sites: Update virtual site positions whenever positions
-            change. Defaults to True.
     """
     positions: ObservedArray[Any, array_float] = field(
         default_factory=lambda: ObservedArray(np.empty((0, 3), float)),
@@ -128,11 +124,7 @@ class System(Sequence[_SystemAtom]):
             self,
             atoms: list[Atom],
             box: NDArray[np.float64] = np.zeros((3, 3)),
-            virtual_sites: list[VirtualSite] | None = None,
-            *,
-            update_virtual_sites: bool = True,
     ) -> None:
-        self._update_virtual_sites = update_virtual_sites
         self._virtual_sites = None
         self._atoms = None
         self._system_atoms = None
@@ -144,14 +136,12 @@ class System(Sequence[_SystemAtom]):
         self._setup(atoms)
         self._box: ObservedArray[Any, array_float] = ObservedArray(box)
 
-        if virtual_sites is not None:
-            self._setup_virtual_sites(virtual_sites)
+        # note: by default we always update virtual sites when positions change.
+        # this could be undesirable for certain testing applications
+        # so may need to be made optional in the future.
+        self.positions.register_notifier(self._update_virtual_site_positions)
 
-        if update_virtual_sites:
-            # Register before backend observers so they receive corrected sites
-            # during the same notification pass.
-            self.positions.register_notifier(self._update_virtual_site_positions)
-            self._update_virtual_site_positions(self.positions.base)
+        self._update_virtual_site_positions(self.positions.base)
 
         # Delete residue_map cached property if residues changes.
         self.residues.register_notifier(_del_attr(self, "residue_map"))
@@ -285,6 +275,9 @@ class System(Sequence[_SystemAtom]):
         Returns:
             An identical System object.
         """
+        if len(self.virtual_site_indices) !=0:
+            raise NotimplementedError()
+
         atoms = [
             Atom(**{
                 name: deepcopy(getattr(atom, name))
@@ -294,11 +287,9 @@ class System(Sequence[_SystemAtom]):
             })
             for atom in self
         ]
-        copied = System(
-            atoms, self.box.base.copy(), deepcopy(self._virtual_sites),
-            update_virtual_sites=self._update_virtual_sites,
-        )
+        copied = System(atoms, self.box.base.copy())
         for name in self.__dataclass_fields__: # why do we do this?
+            # BROKEN
             if name.startswith("virtual_"):
                 getattr(copied, name)[:] = getattr(self, name)
         return copied
@@ -325,6 +316,9 @@ class System(Sequence[_SystemAtom]):
             An System object containing only atoms and virtual
             sites addressed by the key.
         """
+        if len(self.virtual_site_indices) !=0:
+            raise NotimplementedError()
+
         if isinstance(key, str):
             indices = [i for i in sorted(self.select(key))]
         else:
@@ -336,10 +330,11 @@ class System(Sequence[_SystemAtom]):
         ]
         virtual_sites = [self._virtual_sites[i] for i in v_idx]
         if keep_box:
-            return System(atoms, self._box, virtual_sites,
-                          update_virtual_sites=self._update_virtual_sites)
-        return System(atoms, np.zeros((3, 3)), virtual_sites,
-                      update_virtual_sites=self._update_virtual_sites)
+            # HANDLE VIRTUAL SITES
+            return System(atoms, self._box)
+        # HANDLE VIRTUAL SITES
+        return System(atoms, np.zeros((3, 3)))
+        
 
     def index(self, atom: Any, start: int = 0, stop: int = -1) -> int:
         """Find the first index where the atom object is found.
@@ -370,50 +365,23 @@ class System(Sequence[_SystemAtom]):
             raise TypeError
 
     @staticmethod
-    def load(*args: str, update_virtual_sites: bool = True) -> System:
+    def load(*args: str) -> System:
         """Load a system from PDB files.
         Optionally, add forcefield XML files to add virtual sites.
 
         Args:
             args: The PDB file or list of PDB files with position,
                 element, name, residue, residue, name, and lattice
-                vector data; optionally also the XML file or files 
-                specifying a forcefield with virtual sites.
-            update_virtual_sites: Update virtual site positions on loading and
-                whenever positions change. Defaults to True.
+                vector data.
 
         Returns:
             The system generated from the data in the PDB files.
         """
-        pdb_filenames = [f for f in args if f.endswith('.pdb')]
-        atoms, box = load_system(*pdb_filenames)
-        system = System(atoms, box, update_virtual_sites=update_virtual_sites)
-        virtual_sites = None
-        xml_filenames = [f for f in args if f.endswith('.xml')]
-        if len(xml_filenames):
-            virtual_sites = System._load_virtual_sites(system,xml_filenames)
-            system = System(atoms, box, virtual_sites,
-                            update_virtual_sites=update_virtual_sites)
+        atoms, box = load_system(*args)
+        system = System(atoms, box)
         return system 
 
-    @staticmethod
-    def _load_virtual_sites(
-            system,
-            forcefield: list[str] | str,
-        ) -> None:
-        """Load virtual sites from XML force field files.
-
-        Args:
-           forcefield: The XML file or list of XML files used to
-           set up the forcefield, with information about the 
-           virtual sites.
-        """
-        omm_system = load_omm_system(system,forcefield)
-        virtual_sites = extract_virtual_sites(omm_system) 
-        del omm_system
-        return virtual_sites
-    
-    def _setup_virtual_sites(
+    def build_virtual_sites(
             self,
             virtual_sites: list[VirtualSite],
         ) -> None:
@@ -441,7 +409,6 @@ class System(Sequence[_SystemAtom]):
                     
             setattr(self, "_" + name, ObservedArray(temp))
         self._virtual_sites = virtual_sites
-
 
     def select(self, query: str) -> frozenset[int]:
         """Convert a VMD-like selection query into a set of atom indices.
