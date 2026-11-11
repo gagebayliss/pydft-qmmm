@@ -80,11 +80,15 @@ def openmm_interface_factory(
     if pme_alpha is None:
         pme_alpha = 3.5 / openmm.unit.nanometer
 
-    if pme_gridnumber is None:
+    no_box = np.array_equal(system.box, np.zeros((3,3)))
+    using_pme = nonbonded_method.upper() == "PME"
+    if no_box and using_pme:
+        raise ValueError("Cannot use PME without box vectors")
+
+    if pme_gridnumber is None and not no_box:
         conservative_gridnumber = np.ceil(
             compute_lattice_constants(system.box)[0:3],
         ).astype(int) * 4
-
         # for efficient FFT
         pme_gridnumber = tuple([
             int(2**np.floor(np.log(num)/np.log(2)))
