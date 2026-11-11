@@ -152,6 +152,7 @@ def openmm_interface_factory(
         base_system,
     )
     _adjust_system(system, base_system)
+    system.build_virtual_sites(extract_virtual_sites(base_system)) # new
     aux_system = _empty_omm_system(system)
     base_context = _build_omm_context(base_system, omm_modeller, platform, properties)
     aux_context = _build_omm_context(aux_system, omm_modeller, platform, properties)
@@ -163,9 +164,6 @@ def openmm_interface_factory(
         aux_energy_group_force_mask=np.ones(system.positions.shape),
         aux_forces_group_force_mask=np.ones(system.positions.shape),
     )
-    ### add virtual sites to PyDFT System object
-    system.build_virtual_sites(extract_virtual_sites(base_system))
-
     return wrapper
 
 

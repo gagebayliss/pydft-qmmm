@@ -1,0 +1,895 @@
+------------------------------------------------------------------------
+
+                         .---...________...---.
+                         |                    |
+                         |--.              .--|
+                         |   '.          .'   |
+                         |'---'          '---'|
+                         |       .----.       |
+                         |       |    |       |
+                         |        '--'        |
+                         |      '------'      |
+                     .--' '---...______...---' '--.
+                    '...                        ...'
+                        '''-----________-----'''
+
+
+             .-----.    .--.   .--.    .-----.       .------.
+            /  / \__\   |  |   |  |   /  .-.  \     /  ._.  |
+           |  |  .---.  |  '---'  |  |  |   |  |   /  /  |  |
+           |  |  '.  |  |  .---.  |  |  |   |  |  |  '---'  |
+            \  \ /   |  |  |   |  |   \  '-'  /   '------.  |
+             '----'--'  '--'   '--'    '-----'           '--'
+
+         Software for developing SCF approaches based on Psi4,          
+           originally designed to implement the GHO methods.            
+
+                             Developed by:                              
+                            John P. Pederson                            
+
+------------------------------------------------------------------------
+============================= test session starts ==============================
+platform linux -- Python 3.13.11, pytest-9.0.3, pluggy-1.6.0 -- /storage/home/hcoda1/6/gbayliss3/.conda/envs/pydft-overhaul/bin/python
+cachedir: .pytest_cache
+rootdir: /storage/project/r-jmcdaniel43-0/gbayliss3/development/pydft-qmmm
+configfile: pyproject.toml
+plugins: anyio-4.12.1
+collecting ... collected 6 items
+
+tests/virtual_test.py::test_virtual_io PASSED
+tests/virtual_test.py::test_virtual_site_positions 0
+1
+2
+0
+1
+2
+0
+1
+2
+0
+1
+2
+0
+1
+2
+0
+1
+2
+0
+1
+2
+0
+1
+2
+0
+1
+2
+0
+1
+2
+PASSED
+tests/virtual_test.py::test_three_average_distribute_forces PASSED
+tests/virtual_test.py::test_calculator_electrostatic_cutoff 
+Scratch directory: /tmp/
+  PE does not make use of molecular symmetry: further calculations in C1 point group.
+  PE geometry must align with POTFILE keyword: resetting coordinates with fixed origin and orientation.
+   => Libint2 <=
+
+    Primary   basis highest AM E, G, H:  7, 6, 3
+    Auxiliary basis highest AM E, G, H:  7, 7, 4
+    Onebody   basis highest AM E, G, H:  -, -, -
+    Solid Harmonics ordering:            Gaussian
+
+*** tstart() called on atl1-1-02-008-11-1.pace.gatech.edu
+*** at Tue Nov 10 21:11:21 2026
+
+   => Loading Basis Set <=
+
+    Name: DEFAULT
+    Role: ORBITAL
+    Keyword: BASIS
+    atoms 1   entry O          line    81 file /storage/project/r-jmcdaniel43-0/gbayliss3/psi4/objdir/stage/share/psi4/basis/sto-3g.gbs 
+    atoms 2-3 entry H          line    19 file /storage/project/r-jmcdaniel43-0/gbayliss3/psi4/objdir/stage/share/psi4/basis/sto-3g.gbs 
+
+
+         ---------------------------------------------------------
+                                   SCF
+               by Justin Turney, Rob Parrish, Andy Simmonett
+                          and Daniel G. A. Smith
+                              RHF Reference
+                        1 Threads,    500 MiB Core
+         ---------------------------------------------------------
+
+  ==> Geometry <==
+
+    Molecular point group: c1
+    Full point group: C1
+
+    Geometry (in Angstrom), charge = 0, multiplicity = 1:
+
+       Center              X                  Y                   Z               Mass       
+    ------------   -----------------  -----------------  -----------------  -----------------
+         O            5.558000000000    19.020000000000    12.139000000000    15.994914619570
+         H            4.860000000000    19.198000000000    12.769000000000     1.007825032230
+         H            5.800000000000    19.881000000000    11.799000000000     1.007825032230
+
+  Running in c1 symmetry.
+
+  Rotational constants: A =     12.28812  B =      0.00173  C =      0.00173 [cm^-1]
+  Rotational constants: A = 368388.64757  B =     51.73629  C =     51.73157 [MHz]
+  Nuclear repulsion =    9.197909210301567
+
+  Charge       = 0
+  Multiplicity = 1
+  Electrons    = 10
+  Nalpha       = 5
+  Nbeta        = 5
+
+  ==> Algorithm <==
+
+  SCF Algorithm Type is DF.
+  DIIS enabled.
+  MOM disabled.
+  Fractional occupation disabled.
+  Guess Type is READ.
+  Energy threshold   = 1.00e-06
+  Density threshold  = 1.00e-06
+  Integral threshold = 1.00e-12
+
+  ==> Primary Basis <==
+
+  Basis Set: DEFAULT
+    Blend: STO-3G
+    Number of shells: 5
+    Number of basis functions: 7
+    Number of Cartesian functions: 7
+    Spherical Harmonics?: true
+    Max angular momentum: 1
+
+   => Loading Basis Set <=
+
+    Name: (DEFAULT AUX)
+    Role: JKFIT
+    Keyword: DF_BASIS_SCF
+    atoms 1   entry O          line   318 file /storage/project/r-jmcdaniel43-0/gbayliss3/psi4/objdir/stage/share/psi4/basis/def2-universal-jkfit.gbs 
+    atoms 2-3 entry H          line    18 file /storage/project/r-jmcdaniel43-0/gbayliss3/psi4/objdir/stage/share/psi4/basis/def2-universal-jkfit.gbs 
+
+   => External Potential Field:  <= 
+
+    > Charges [e] [a0] < 
+
+              Z          x          y          z
+        0.52422   37.27296   18.89159   15.97008
+        0.52422   35.71582   20.99675   14.81923
+       -1.04844   36.27707   19.42072   14.73419
+        0.00000   34.55175    7.34348   15.49953
+
+
+ !!!  Unable to find file /tmp/stdout.default.1583653.180.npy, defaulting to SAD guess. !!!
+
+  ==> Integral Setup <==
+
+  DFHelper Memory: AOs need 0.000 GiB; user supplied 0.366 GiB. 
+  SCF_SUBTYPE=INCORE selected. In-core MEM_DF algorithm will be used.
+  Using in-core AOs.
+
+  ==> MemDFJK: Density-Fitted J/K Matrices <==
+
+    J tasked:                   Yes
+    K tasked:                   Yes
+    wK tasked:                   No
+    OpenMP threads:               1
+    Memory [MiB]:               375
+    Algorithm:                 Core
+    Schwarz Cutoff:           1E-12
+    Mask sparsity (%):       0.0000
+    Fitting Condition:        1E-10
+
+   => Auxiliary Basis Set <=
+
+  Basis Set: (DEFAULT AUX)
+    Blend: DEF2-UNIVERSAL-JKFIT
+    Number of shells: 37
+    Number of basis functions: 113
+    Number of Cartesian functions: 133
+    Spherical Harmonics?: true
+    Max angular momentum: 4
+
+   => External Potential Field:  <= 
+
+    > Charges [e] [a0] < 
+
+              Z          x          y          z
+        0.52422   37.27296   18.89159   15.97008
+        0.52422   35.71582   20.99675   14.81923
+       -1.04844   36.27707   19.42072   14.73419
+        0.00000   34.55175    7.34348   15.49953
+
+  Old nuclear repulsion        =    9.197909210301567
+  Additional nuclear repulsion =    0.002888511862283
+  Total nuclear repulsion      =    9.200797722163850
+
+  Minimum eigenvalue in the overlap matrix is 3.4200918857E-01.
+  Reciprocal condition number of the overlap matrix is 1.7709961346E-01.
+    Using symmetric orthogonalization.
+
+  ==> Pre-Iterations <==
+
+  SCF Guess: Superposition of Atomic Densities via on-the-fly atomic UHF (no occupation information).
+
+   -------------------------
+    Irrep   Nso     Nmo    
+   -------------------------
+     A          7       7 
+   -------------------------
+    Total       7       7
+   -------------------------
+
+  ==> Iterations <==
+
+                           Total Energy        Delta E     RMS |[F,P]|
+
+   @DF-RHF iter SAD:   -74.22307207643887   -7.42231e+01   0.00000e+00 
+   @DF-RHF iter   1:   -74.91371098768091   -6.90639e-01   3.54536e-02 ADIIS/DIIS
+   @DF-RHF iter   2:   -74.96204725377690   -4.83363e-02   5.34480e-03 ADIIS/DIIS
+   @DF-RHF iter   3:   -74.96289824524985   -8.50991e-04   1.25713e-03 ADIIS/DIIS
+   @DF-RHF iter   4:   -74.96296583508077   -6.75898e-05   1.24826e-04 ADIIS/DIIS
+   @DF-RHF iter   5:   -74.96296698953317   -1.15445e-06   8.24039e-06 DIIS
+   @DF-RHF iter   6:   -74.96296699341539   -3.88222e-09   4.88800e-07 DIIS
+  Energy and wave function converged.
+
+
+  ==> Post-Iterations <==
+
+    Orbital Energies [Eh]
+    ---------------------
+
+    Doubly Occupied:                                                      
+
+       1A    -20.242178     2A     -1.268848     3A     -0.618415  
+       4A     -0.453273     5A     -0.391537  
+
+    Virtual:                                                              
+
+       6A      0.605699     7A      0.742588  
+
+    Final Occupation by Irrep:
+              A 
+    DOCC [     5 ]
+    NA   [     5 ]
+    NB   [     5 ]
+
+  @DF-RHF Final Energy:   -74.96296699341539
+
+   => Energetics <=
+
+    Nuclear Repulsion Energy =              9.2007977221638502
+    One-Electron Energy =                -122.3790414285658130
+    Two-Electron Energy =                  38.2152767129865651
+    Total Energy =                        -74.9629669934153924
+
+Computation Completed
+
+
+Properties will be evaluated at   0.000000,   0.000000,   0.000000 [a0]
+
+Properties computed using the SCF density matrix
+
+
+ Multipole Moments:
+
+ ------------------------------------------------------------------------------------
+     Multipole            Electronic (a.u.)      Nuclear  (a.u.)        Total (a.u.)
+ ------------------------------------------------------------------------------------
+
+ L = 1.  Multiply by 2.5417464519 to convert [e a0] to [Debye]
+ Dipole X            :       -104.4336158          104.1692629           -0.2643529
+ Dipole Y            :       -360.7869268          361.3893345            0.6024077
+ Dipole Z            :       -229.7737676          229.9418749            0.1681073
+ Magnitude           :                                                    0.6789974
+
+ ------------------------------------------------------------------------------------
+
+*** tstop() called on atl1-1-02-008-11-1.pace.gatech.edu at Tue Nov 10 21:11:21 2026
+Module time:
+	user time   =       0.37 seconds =       0.01 minutes
+	system time =       0.03 seconds =       0.00 minutes
+	total time  =          0 seconds =       0.00 minutes
+Total time:
+	user time   =       0.37 seconds =       0.01 minutes
+	system time =       0.03 seconds =       0.00 minutes
+	total time  =          0 seconds =       0.00 minutes
+
+Scratch directory: /tmp/
+  PE does not make use of molecular symmetry: further calculations in C1 point group.
+  PE geometry must align with POTFILE keyword: resetting coordinates with fixed origin and orientation.
+   => Libint2 <=
+
+    Primary   basis highest AM E, G, H:  7, 6, 3
+    Auxiliary basis highest AM E, G, H:  7, 7, 4
+    Onebody   basis highest AM E, G, H:  -, -, -
+    Solid Harmonics ordering:            Gaussian
+
+*** tstart() called on atl1-1-02-008-11-1.pace.gatech.edu
+*** at Tue Nov 10 21:11:21 2026
+
+   => Loading Basis Set <=
+
+    Name: DEFAULT
+    Role: ORBITAL
+    Keyword: BASIS
+    atoms 1   entry O          line    81 file /storage/project/r-jmcdaniel43-0/gbayliss3/psi4/objdir/stage/share/psi4/basis/sto-3g.gbs 
+    atoms 2-3 entry H          line    19 file /storage/project/r-jmcdaniel43-0/gbayliss3/psi4/objdir/stage/share/psi4/basis/sto-3g.gbs 
+
+
+         ---------------------------------------------------------
+                                   SCF
+               by Justin Turney, Rob Parrish, Andy Simmonett
+                          and Daniel G. A. Smith
+                              RHF Reference
+                        1 Threads,    500 MiB Core
+         ---------------------------------------------------------
+
+  ==> Geometry <==
+
+    Molecular point group: c1
+    Full point group: C1
+
+    Geometry (in Angstrom), charge = 0, multiplicity = 1:
+
+       Center              X                  Y                   Z               Mass       
+    ------------   -----------------  -----------------  -----------------  -----------------
+         O            5.558000000000    19.020000000000    12.139000000000    15.994914619570
+         H            4.860000000000    19.198000000000    12.769000000000     1.007825032230
+         H            5.800000000000    19.881000000000    11.799000000000     1.007825032230
+
+  Running in c1 symmetry.
+
+  Rotational constants: A =     12.28812  B =      0.00173  C =      0.00173 [cm^-1]
+  Rotational constants: A = 368388.64757  B =     51.73629  C =     51.73157 [MHz]
+  Nuclear repulsion =    9.197909210301567
+
+  Charge       = 0
+  Multiplicity = 1
+  Electrons    = 10
+  Nalpha       = 5
+  Nbeta        = 5
+
+  ==> Algorithm <==
+
+  SCF Algorithm Type is DF.
+  DIIS enabled.
+  MOM disabled.
+  Fractional occupation disabled.
+  Guess Type is READ.
+  Energy threshold   = 1.00e-06
+  Density threshold  = 1.00e-06
+  Integral threshold = 1.00e-12
+
+  ==> Primary Basis <==
+
+  Basis Set: DEFAULT
+    Blend: STO-3G
+    Number of shells: 5
+    Number of basis functions: 7
+    Number of Cartesian functions: 7
+    Spherical Harmonics?: true
+    Max angular momentum: 1
+
+   => Loading Basis Set <=
+
+    Name: (DEFAULT AUX)
+    Role: JKFIT
+    Keyword: DF_BASIS_SCF
+    atoms 1   entry O          line   318 file /storage/project/r-jmcdaniel43-0/gbayliss3/psi4/objdir/stage/share/psi4/basis/def2-universal-jkfit.gbs 
+    atoms 2-3 entry H          line    18 file /storage/project/r-jmcdaniel43-0/gbayliss3/psi4/objdir/stage/share/psi4/basis/def2-universal-jkfit.gbs 
+
+   => External Potential Field:  <= 
+
+    > Charges [e] [a0] < 
+
+              Z          x          y          z
+        0.52422   37.27296   18.89159   15.97008
+        0.52422   35.71582   20.99675   14.81923
+       -1.04844   36.27707   19.42072   14.73419
+        0.00000   34.55175    7.34348   15.49953
+
+   => Loading Basis Set <=
+
+    Name: DEFAULT
+    Role: ORBITAL
+    Keyword: BASIS
+    atoms 1   entry O          line    81 file /storage/project/r-jmcdaniel43-0/gbayliss3/psi4/objdir/stage/share/psi4/basis/sto-3g.gbs 
+    atoms 2-3 entry H          line    19 file /storage/project/r-jmcdaniel43-0/gbayliss3/psi4/objdir/stage/share/psi4/basis/sto-3g.gbs 
+
+  Reading orbitals from file /tmp/stdout.default.1583653.180.npy, no projection.
+
+  ==> Integral Setup <==
+
+  DFHelper Memory: AOs need 0.000 GiB; user supplied 0.366 GiB. 
+  SCF_SUBTYPE=INCORE selected. In-core MEM_DF algorithm will be used.
+  Using in-core AOs.
+
+  ==> MemDFJK: Density-Fitted J/K Matrices <==
+
+    J tasked:                   Yes
+    K tasked:                   Yes
+    wK tasked:                   No
+    OpenMP threads:               1
+    Memory [MiB]:               375
+    Algorithm:                 Core
+    Schwarz Cutoff:           1E-12
+    Mask sparsity (%):       0.0000
+    Fitting Condition:        1E-10
+
+   => Auxiliary Basis Set <=
+
+  Basis Set: (DEFAULT AUX)
+    Blend: DEF2-UNIVERSAL-JKFIT
+    Number of shells: 37
+    Number of basis functions: 113
+    Number of Cartesian functions: 133
+    Spherical Harmonics?: true
+    Max angular momentum: 4
+
+   => External Potential Field:  <= 
+
+    > Charges [e] [a0] < 
+
+              Z          x          y          z
+        0.52422   37.27296   18.89159   15.97008
+        0.52422   35.71582   20.99675   14.81923
+       -1.04844   36.27707   19.42072   14.73419
+        0.00000   34.55175    7.34348   15.49953
+
+  Old nuclear repulsion        =    9.197909210301567
+  Additional nuclear repulsion =    0.002888511862283
+  Total nuclear repulsion      =    9.200797722163850
+
+  Minimum eigenvalue in the overlap matrix is 3.4200918857E-01.
+  Reciprocal condition number of the overlap matrix is 1.7709961346E-01.
+    Using symmetric orthogonalization.
+
+  ==> Pre-Iterations <==
+
+  SCF Guess: Orbitals guess was supplied from a previous computation.
+
+   -------------------------------------------------------
+    Irrep   Nso     Nmo     Nalpha   Nbeta   Ndocc  Nsocc
+   -------------------------------------------------------
+     A          7       7       5       5       5       0
+   -------------------------------------------------------
+    Total       7       7       5       5       5       0
+   -------------------------------------------------------
+
+  ==> Iterations <==
+
+                           Total Energy        Delta E     RMS |[F,P]|
+
+   @DF-RHF iter   0:   -74.96296699342894   -7.49630e+01   1.69584e-09 
+   @DF-RHF iter   1:   -74.96296699342891    2.84217e-14   4.18131e-10 DIIS
+  Energy and wave function converged.
+
+
+  ==> Post-Iterations <==
+
+    Orbital Energies [Eh]
+    ---------------------
+
+    Doubly Occupied:                                                      
+
+       1A    -20.242178     2A     -1.268848     3A     -0.618415  
+       4A     -0.453273     5A     -0.391537  
+
+    Virtual:                                                              
+
+       6A      0.605699     7A      0.742588  
+
+    Final Occupation by Irrep:
+              A 
+    DOCC [     5 ]
+    NA   [     5 ]
+    NB   [     5 ]
+
+  @DF-RHF Final Energy:   -74.96296699342891
+
+   => Energetics <=
+
+    Nuclear Repulsion Energy =              9.2007977221638502
+    One-Electron Energy =                -122.3790270061373207
+    Two-Electron Energy =                  38.2152622905445654
+    Total Energy =                        -74.9629669934288927
+
+Computation Completed
+
+
+Properties will be evaluated at   0.000000,   0.000000,   0.000000 [a0]
+
+Properties computed using the SCF density matrix
+
+
+ Multipole Moments:
+
+ ------------------------------------------------------------------------------------
+     Multipole            Electronic (a.u.)      Nuclear  (a.u.)        Total (a.u.)
+ ------------------------------------------------------------------------------------
+
+ L = 1.  Multiply by 2.5417464519 to convert [e a0] to [Debye]
+ Dipole X            :       -104.4336158          104.1692629           -0.2643529
+ Dipole Y            :       -360.7869268          361.3893345            0.6024077
+ Dipole Z            :       -229.7737676          229.9418749            0.1681073
+ Magnitude           :                                                    0.6789975
+
+ ------------------------------------------------------------------------------------
+
+*** tstop() called on atl1-1-02-008-11-1.pace.gatech.edu at Tue Nov 10 21:11:22 2026
+Module time:
+	user time   =       0.16 seconds =       0.00 minutes
+	system time =       0.01 seconds =       0.00 minutes
+	total time  =          1 seconds =       0.02 minutes
+Total time:
+	user time   =       0.64 seconds =       0.01 minutes
+	system time =       0.05 seconds =       0.00 minutes
+	total time  =          1 seconds =       0.02 minutes
+
+
+tip4pew
+I_III: none
+subsystem I
+[[ 121.2232 -277.8892  -76.7477]
+ [-136.1077   83.6241  116.3499]
+ [  14.8906  194.2697  -39.5986]
+ [   0.        0.        0.    ]]
+subsystem II
+[[-4.0492 -1.4993 -2.5124]
+ [ 3.3684  1.0897  3.1857]
+ [ 0.6296  0.1423 -0.1746]
+ [-1.3039 -3.8059  1.6247]]
+subsystem III
+[[ 3.5851 -6.9413  2.2975]
+ [-2.7454  5.7257 -1.6633]
+ [-0.7946  1.4782 -1.1366]
+ [ 0.5367 -2.9245  2.4893]]
+tip4pew
+I_III: mechanical
+subsystem I
+[[ 121.3206 -277.9528  -76.7556]
+ [-136.1522   83.6502  116.3555]
+ [  14.8464  194.3033  -39.5968]
+ [   0.1239   -0.0809   -0.0101]]
+subsystem II
+[[-4.0492 -1.4993 -2.5124]
+ [ 3.3684  1.0897  3.1857]
+ [ 0.6296  0.1423 -0.1746]
+ [-1.3039 -3.8059  1.6247]]
+subsystem III
+[[ 3.6823 -7.0275  2.2748]
+ [-2.8009  5.7758 -1.6472]
+ [-0.8451  1.5183 -1.1295]
+ [ 0.6603 -3.0341  2.4605]]
+PASSED
+tests/virtual_test.py::test_calculator_spce 
+Scratch directory: /tmp/
+  PE does not make use of molecular symmetry: further calculations in C1 point group.
+  PE geometry must align with POTFILE keyword: resetting coordinates with fixed origin and orientation.
+   => Libint2 <=
+
+    Primary   basis highest AM E, G, H:  7, 6, 3
+    Auxiliary basis highest AM E, G, H:  7, 7, 4
+    Onebody   basis highest AM E, G, H:  -, -, -
+    Solid Harmonics ordering:            Gaussian
+
+*** tstart() called on atl1-1-02-008-11-1.pace.gatech.edu
+*** at Tue Nov 10 21:11:22 2026
+
+   => Loading Basis Set <=
+
+    Name: DEFAULT
+    Role: ORBITAL
+    Keyword: BASIS
+    atoms 1   entry O          line   130 file /storage/project/r-jmcdaniel43-0/gbayliss3/psi4/objdir/stage/share/psi4/basis/def2-svp.gbs 
+    atoms 2-3 entry H          line    15 file /storage/project/r-jmcdaniel43-0/gbayliss3/psi4/objdir/stage/share/psi4/basis/def2-svp.gbs 
+
+
+         ---------------------------------------------------------
+                                   SCF
+               by Justin Turney, Rob Parrish, Andy Simmonett
+                          and Daniel G. A. Smith
+                              RKS Reference
+                        1 Threads,    500 MiB Core
+         ---------------------------------------------------------
+
+  ==> Geometry <==
+
+    Molecular point group: c1
+    Full point group: C1
+
+    Geometry (in Angstrom), charge = 0, multiplicity = 1:
+
+       Center              X                  Y                   Z               Mass       
+    ------------   -----------------  -----------------  -----------------  -----------------
+         O           21.275000000000    25.306000000000    11.180000000000    15.994914619570
+         H           20.677000000000    25.070000000000    11.945000000000     1.007825032230
+         H           21.855000000000    24.523000000000    10.956000000000     1.007825032230
+
+  Running in c1 symmetry.
+
+  Rotational constants: A =      9.41346  B =      0.00077  C =      0.00077 [cm^-1]
+  Rotational constants: A = 282208.54527  B =     23.07963  C =     23.07868 [MHz]
+  Nuclear repulsion =    8.794824250261481
+
+  Charge       = 0
+  Multiplicity = 1
+  Electrons    = 10
+  Nalpha       = 5
+  Nbeta        = 5
+
+  ==> Algorithm <==
+
+  SCF Algorithm Type is DF.
+  DIIS enabled.
+  MOM disabled.
+  Fractional occupation disabled.
+  Guess Type is SAD.
+  Energy threshold   = 1.00e-06
+  Density threshold  = 1.00e-06
+  Integral threshold = 1.00e-12
+
+  ==> Primary Basis <==
+
+  Basis Set: DEFAULT
+    Blend: DEF2-SVP
+    Number of shells: 12
+    Number of basis functions: 24
+    Number of Cartesian functions: 25
+    Spherical Harmonics?: true
+    Max angular momentum: 2
+
+  ==> DFT Potential <==
+
+   => LibXC <=
+
+    Version 7.0.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018) (10.1016/j.softx.2017.11.002)
+
+   => Composite Functional: PBE <= 
+
+    PBE GGA Exchange-Correlation Functional
+
+    J.P. Perdew et. al., Phys. Rev. Lett., 77(18), 3865-3868, 1996
+
+
+    Deriv               =              1
+    GGA                 =           TRUE
+    Meta                =          FALSE
+
+    Exchange Hybrid     =          FALSE
+    MP2 Hybrid          =          FALSE
+
+   => Exchange Functionals <=
+
+    1.0000     XC_GGA_X_PBE
+
+   => Correlation Functionals <=
+
+    1.0000     XC_GGA_C_PBE
+
+   => LibXC Density Thresholds  <==
+
+    XC_GGA_C_PBE:  1.00E-12 
+    XC_GGA_X_PBE:  1.00E-15 
+
+   => Molecular Quadrature <=
+
+    Radial Scheme          =       TREUTLER
+    Pruning Scheme         =           NONE
+    Nuclear Scheme         =       TREUTLER
+
+    Blocking Scheme        =         OCTREE
+    BS radius alpha        =              1
+    Pruning alpha          =              1
+    Radial Points          =             75
+    Spherical Points       =            302
+    Total Points           =          66224
+    Total Blocks           =            550
+    Max Points             =            255
+    Max Functions          =             24
+    Weights Tolerance      =       1.00E-15
+
+   => Loading Basis Set <=
+
+    Name: (DEFAULT AUX)
+    Role: JKFIT
+    Keyword: DF_BASIS_SCF
+    atoms 1   entry O          line   318 file /storage/project/r-jmcdaniel43-0/gbayliss3/psi4/objdir/stage/share/psi4/basis/def2-universal-jkfit.gbs 
+    atoms 2-3 entry H          line    18 file /storage/project/r-jmcdaniel43-0/gbayliss3/psi4/objdir/stage/share/psi4/basis/def2-universal-jkfit.gbs 
+
+   => External Potential Field:  <= 
+
+    > Charges [e] [a0] < 
+
+              Z          x          y          z
+       -0.84760   49.59208   35.91236   34.25318
+        0.42380   50.79206   34.67269   33.48217
+        0.42380   49.58641   35.70071   36.12967
+
+  ==> Integral Setup <==
+
+  DFHelper Memory: AOs need 0.001 GiB; user supplied 0.321 GiB. 
+  SCF_SUBTYPE=INCORE selected. In-core MEM_DF algorithm will be used.
+  Using in-core AOs.
+
+  ==> MemDFJK: Density-Fitted J/K Matrices <==
+
+    J tasked:                   Yes
+    K tasked:                    No
+    wK tasked:                   No
+    OpenMP threads:               1
+    Memory [MiB]:               328
+    Algorithm:                 Core
+    Schwarz Cutoff:           1E-12
+    Mask sparsity (%):       0.0000
+    Fitting Condition:        1E-10
+
+   => Auxiliary Basis Set <=
+
+  Basis Set: (DEFAULT AUX)
+    Blend: DEF2-UNIVERSAL-JKFIT
+    Number of shells: 37
+    Number of basis functions: 113
+    Number of Cartesian functions: 133
+    Spherical Harmonics?: true
+    Max angular momentum: 4
+
+  Cached 100.0% of DFT collocation blocks in 0.045 [GiB].
+
+   => External Potential Field:  <= 
+
+    > Charges [e] [a0] < 
+
+              Z          x          y          z
+       -0.84760   49.59208   35.91236   34.25318
+        0.42380   50.79206   34.67269   33.48217
+        0.42380   49.58641   35.70071   36.12967
+
+  Old nuclear repulsion        =    8.794824250261481
+  Additional nuclear repulsion =   -0.022805026527411
+  Total nuclear repulsion      =    8.772019223734070
+
+  Minimum eigenvalue in the overlap matrix is 4.2205222956E-02.
+  Reciprocal condition number of the overlap matrix is 1.1368377930E-02.
+    Using symmetric orthogonalization.
+
+  ==> Pre-Iterations <==
+
+  SCF Guess: Superposition of Atomic Densities via on-the-fly atomic UHF (no occupation information).
+
+   -------------------------
+    Irrep   Nso     Nmo    
+   -------------------------
+     A         24      24 
+   -------------------------
+    Total      24      24
+   -------------------------
+
+  ==> Iterations <==
+
+                           Total Energy        Delta E     RMS |[F,P]|
+
+   @DF-RKS iter SAD:   -75.98378313862665   -7.59838e+01   0.00000e+00 
+   @DF-RKS iter   1:   -76.09876497768762   -1.14982e-01   2.82141e-02 ADIIS/DIIS
+   @DF-RKS iter   2:   -75.67758487972230    4.21180e-01   4.96633e-02 ADIIS/DIIS
+   @DF-RKS iter   3:   -76.26493212501921   -5.87347e-01   5.10313e-03 ADIIS/DIIS
+   @DF-RKS iter   4:   -76.27006388491311   -5.13176e-03   9.57975e-05 DIIS
+   @DF-RKS iter   5:   -76.27006570416182   -1.81925e-06   3.30043e-05 DIIS
+   @DF-RKS iter   6:   -76.27006592423484   -2.20073e-07   2.20982e-06 DIIS
+   @DF-RKS iter   7:   -76.27006592544467   -1.20983e-09   2.07436e-07 DIIS
+  Energy and wave function converged.
+
+
+  ==> Post-Iterations <==
+
+   Electrons on quadrature grid:
+      Ntotal   =   10.0000004597 ; deviation = 4.597e-07 
+
+    Orbital Energies [Eh]
+    ---------------------
+
+    Doubly Occupied:                                                      
+
+       1A    -18.735464     2A     -0.868632     3A     -0.452433  
+       4A     -0.290978     5A     -0.221453  
+
+    Virtual:                                                              
+
+       6A      0.021743     7A      0.097941     8A      0.514971  
+       9A      0.528419    10A      0.868149    11A      0.874522  
+      12A      0.959691    13A      1.037494    14A      1.270427  
+      15A      1.424839    16A      1.513403    17A      1.659100  
+      18A      2.072732    19A      2.111918    20A      2.814103  
+      21A      2.899249    22A      3.012596    23A      3.411473  
+      24A      3.658385  
+
+    Final Occupation by Irrep:
+              A 
+    DOCC [     5 ]
+    NA   [     5 ]
+    NB   [     5 ]
+
+  @DF-RKS Final Energy:   -76.27006592544467
+
+   => Energetics <=
+
+    Nuclear Repulsion Energy =              8.7720192237340697
+    One-Electron Energy =                -122.3595794112165009
+    Two-Electron Energy =                  46.5481795189662932
+    DFT Exchange-Correlation Energy =      -9.2306852569285187
+    Empirical Dispersion Energy =           0.0000000000000000
+    VV10 Nonlocal Energy =                  0.0000000000000000
+    Total Energy =                        -76.2700659254446691
+
+Computation Completed
+
+
+Properties will be evaluated at   0.000000,   0.000000,   0.000000 [a0]
+
+Properties computed using the SCF density matrix
+
+
+ Multipole Moments:
+
+ ------------------------------------------------------------------------------------
+     Multipole            Electronic (a.u.)      Nuclear  (a.u.)        Total (a.u.)
+ ------------------------------------------------------------------------------------
+
+ L = 1.  Multiply by 2.5417464519 to convert [e a0] to [Debye]
+ Dipole X            :       -402.0165470          402.0052181           -0.0113289
+ Dipole Y            :       -476.9434581          476.2884624           -0.6549957
+ Dipole Z            :       -211.9455630          212.2937227            0.3481597
+ Magnitude           :                                                    0.7418645
+
+ ------------------------------------------------------------------------------------
+
+*** tstop() called on atl1-1-02-008-11-1.pace.gatech.edu at Tue Nov 10 21:11:23 2026
+Module time:
+	user time   =       0.95 seconds =       0.02 minutes
+	system time =       0.26 seconds =       0.00 minutes
+	total time  =          1 seconds =       0.02 minutes
+Total time:
+	user time   =       1.70 seconds =       0.03 minutes
+	system time =       0.32 seconds =       0.01 minutes
+	total time  =          2 seconds =       0.03 minutes
+
+spce, QM/MM
+I_II: none
+I_III: none
+subsystem I
+[[  0.2256 -44.6793  21.9139]
+ [ 96.6336 -23.1813 -91.8282]
+ [-96.7983  67.803   70.0081]]
+subsystem II
+[[-0.4996 -0.9782 -4.2612]
+ [-0.0656  0.5411  0.5671]
+ [ 0.2592  0.4218  3.3435]]
+subsystem III
+[[-0.1206 -0.8721 -2.9202]
+ [ 0.0807  0.8425  0.1388]
+ [ 0.2847  0.0621  3.0591]]
+PASSED
+tests/virtual_test.py::test_calculator_spce_mm_only 
+spce, MM only
+subsystem I
+[[ 1.0193  2.392  -3.6779]
+ [-1.5108 -1.3889  3.0989]
+ [ 0.5792 -1.009   0.6766]]
+subsystem II
+[[-0.6142 -0.9183 -4.373 ]
+ [-0.0112  0.5114  0.609 ]
+ [ 0.3025  0.4007  3.3932]]
+subsystem III
+[[-0.2871 -1.0124 -3.0262]
+ [ 0.1676  0.9035  0.1898]
+ [ 0.3547  0.121   3.1096]]
+PASSED
+
+============================== 6 passed in 2.63s ===============================

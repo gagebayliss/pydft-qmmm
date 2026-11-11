@@ -116,139 +116,59 @@ def reference_distribute_forces(forces):
 
 ##### these.....
 
-def test_calculator():
-    system = System.load(
-        "tests/tip4pew_data/tip4pew_trimer.pdb",
-    )
-    with open("tests/tip4pew_data/trimer_ss_ii.json") as fh:
-        embedding_list = json.load(fh)
-    for atom in embedding_list:
-        system.subsystems[atom] = Subsystem.II
-    mm = MMHamiltonian(
-        forcefield=[
-            "tests/tip4pew_data/tip4pew.xml",
-            # "tests/tip4pew_data/tip4pew_residues.xml",
-        ],
-        # pme_gridnumber=30,
-        # pme_alpha=5.0,
-        nonbonded_method="NoCutoff",
-    )
-    qm = QMHamiltonian(
-        basis="sto-3g",
-        functional="HF",
-        charge=0,
-        multiplicity=1,
-        guess="read",
-    )
-    I_III = "none"
-    qmmm = QMMMHamiltonian(
-        "electrostatic",
-        I_III,
-        partition=None,
-    )
-    total = mm[4:] + qm[:4] + qmmm
-    calculator = total.build_calculator(system)
-    results = calculator.calculate()
-    forces = results.forces
-    print()
-    np.set_printoptions(
-        precision=4,       # digits after decimal
-        suppress=True,     # avoid scientific notation for small values
-        # linewidth=120,     # characters before wrapping
-        # threshold=1000,    # number of elements before abbreviating with ...
-    )
-    print("tip4pew")
-    print(f"I_III: {I_III}")
-    print("subsystem I")
-    print(forces[:4])
-    print("subsystem II")
-    print(forces[4:8])
-    print("subsystem III")
-    print(forces[8:])
+def test_aux_real_space_subtraction():
+    """Test that virtual sites treated properly in aux context.
 
+    Zeroing SSI charges w/ embedding should give same
+    forces on SSII point charges as leaving SSI charges
+    and doing real-space subtraction.
+    """
+    I_III = ["none", "mechanical"]
+    outcome = {}
+    for embedding in I_III:
+        system = System.load(
+            "tests/tip4pew_data/tip4pew_trimer.pdb",
+        )
+        mm = MMHamiltonian(
+            forcefield=[
+                "tests/tip4pew_data/tip4pew.xml",
+            ],
+            nonbonded_method="NoCutoff",
+        )
+        qm = QMHamiltonian(
+            basis="sto-3g",
+            functional="HF",
+            charge=0,
+            multiplicity=1,
+            guess="read",
+        )
+        qmmm = QMMMHamiltonian(
+            "electrostatic",
+            embedding,
+            partition=None,
+        )
+        total = mm[4:] + qm[:4] + qmmm
+        calculator = total.build_calculator(system)
+        # has to run after calculator
+        with open("tests/tip4pew_data/trimer_ss_ii.json") as fh:
+            embedding_list = json.load(fh)
+        for atom in embedding_list:
+            system.subsystems[atom] = Subsystem.II
 
-def test_calculator_spce():
-    system = System.load(
-        "tests/spce_data/hoh_123.pdb",
+        results = calculator.calculate()
+        forces = results.forces
+        outcome[embedding] = forces
+        print()
+        np.set_printoptions(
+            precision=4,       # digits after decimal
+            suppress=True,     # avoid scientific notation for small values
+        )
+    electrostatic_cutoff_forces = outcome["none"]
+    electrostatic_mechanical_forces = outcome["mechanical"]
+    np.testing.assert_allclose(
+        electrostatic_cutoff_forces[4:8],
+        electrostatic_mechanical_forces[4:8],
+        rtol=1e-6,
+        atol=1e-4, #two orders of magnitude less gradient error than we care about
     )
-    mm = MMHamiltonian(
-        forcefield=[
-            "tests/spce_data/spce.xml",
-            "tests/spce_data/spce_residues.xml",
-        ],
-        nonbonded_method="NoCutoff",
-    )
-    qm = QMHamiltonian(
-        basis="def2-SVP",
-        functional="PBE",
-        charge=0,
-        multiplicity=1,
-        guess="SAD",
-    )
-    # I_II = "electrostatic"
-    # I_II = "mechanical"
-    I_II = "none"
-    I_III = "none"
-    # I_III = "mechanical"
-    qmmm = QMMMHamiltonian(
-        I_II,
-        I_III,
-        partition=None,
-    )
-    total = mm[3:] + qm[:3] + qmmm
-    calculator = total.build_calculator(system)
-    
-    with open("tests/spce_data/trimer_ss_ii.json") as fh:
-        embedding_list = json.load(fh)
-    for atom in embedding_list:
-        calculator.system.subsystems[atom] = Subsystem.II
-        
-    results = calculator.calculate()
-    forces = results.forces
-    
-    np.set_printoptions(
-        precision=4,       # digits after decimal
-        suppress=True,     # avoid scientific notation for small values
-    )
-    print()
-    print("spce, QM/MM")
-    print(f"I_II: {I_II}")
-    print(f"I_III: {I_III}")
-    print("subsystem I")
-    print(forces[:3])
-    print("subsystem II")
-    print(forces[3:6])
-    print("subsystem III")
-    print(forces[6:])
-
-
-def test_calculator_spce_mm_only():
-    sys_name = "hoh_123"
-    system = System.load(
-        f"tests/spce_data/{sys_name}.pdb",
-    )
-    mm = MMHamiltonian(
-        forcefield=[
-            "tests/spce_data/spce.xml",
-            "tests/spce_data/spce_residues.xml",
-        ],
-        nonbonded_method="NoCutoff",
-    )
-    total = mm
-    calculator = total.build_calculator(system)
-    results = calculator.calculate()
-    forces = results.forces
-    np.set_printoptions(
-        precision=4,       # digits after decimal
-        suppress=True,     # avoid scientific notation for small values
-    )
-    print()
-    print("spce, MM only")
-    print("subsystem I")
-    print(forces[:3])
-    print("subsystem II")
-    print(forces[3:6])
-    print("subsystem III")
-    print(forces[6:])
-    np.save(f"tests/spce_data/reference/{sys_name}_forces.npy",forces)
 
