@@ -289,23 +289,25 @@ def _empty_omm_system(system: System, add_virtual_sites = True) -> openmm.System
         return omm_system
 
     for i, site_index in enumerate(system.virtual_site_indices):
-        if system.virtual_types[i] == "two_average":
-            p1 = system.virtual_parents[i][0]
-            p2 = system.virtual_parents[i][1]
-            w1 = system.virtual_parent_weights[i][0]
-            w2 = system.virtual_parent_weights[i][1]
-            site = openmm.TwoParticleAverageSite(p1,p2,w1,w2)
-        elif system.virtual_types[i] == "three_average":
-            p1 = system.virtual_parents[i][0]
-            p2 = system.virtual_parents[i][1]
-            p3 = system.virtual_parents[i][2]
-            w1 = system.virtual_parent_weights[i][0]
-            w2 = system.virtual_parent_weights[i][1]
-            w3 = system.virtual_parent_weights[i][2]
-            site = openmm.ThreeParticleAverageSite(p1,p2,p3,w1,w2,w3)
+        site_type = system.virtual_types[i]
+        parents = tuple(int(p) for p in system.virtual_parents[i])
+        weights = system.virtual_parent_weights[i]
+        if site_type == "two_average":
+            site = openmm.TwoParticleAverageSite(*parents, *weights)
+        elif site_type == "three_average":
+            site = openmm.ThreeParticleAverageSite(*parents, *weights)
+        elif site_type == "out_of_plane":
+            w12, w13, wcross = weights
+            site = openmm.OutOfPlaneSite(*parents, w12, w13, wcross * 10.0)
+        elif site_type == "local_coordinates":
+            origin_weights, x_weights, y_weights, local_position = weights
+            site = openmm.LocalCoordinatesSite(
+                parents, origin_weights, x_weights, y_weights,
+                openmm.Vec3(*local_position) * openmm.unit.angstrom,
+            )
         else:
-            raise ValueError("...")
-        omm_system.setVirtualSite(site_index,site)
+            raise ValueError(f"Unsupported virtual-site type: {site_type}")
+        omm_system.setVirtualSite(int(site_index), site)
     return omm_system
 
 
@@ -418,4 +420,5 @@ def _build_omm_context(
             omm_platform,
         )
     omm_context.setPositions(omm_modeller.positions)
+    omm_context.computeVirtualSites()
     return omm_context

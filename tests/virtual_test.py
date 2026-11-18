@@ -6,8 +6,13 @@ import pytest
 
 import json
 import numpy as np
+import openmm
+from openmm import unit
 
 from pydft_qmmm import System
+from pydft_qmmm.interfaces.openmm.openmm_factory import _empty_omm_system
+from pydft_qmmm.system.atom import Atom
+from pydft_qmmm.utils import extract_virtual_sites
 from pydft_qmmm import VerletIntegrator
 from pydft_qmmm import MMHamiltonian
 from pydft_qmmm import QMHamiltonian
@@ -84,6 +89,65 @@ def test_three_average_distribute_forces():
     reference_propagated_forces = reference_distribute_forces(forces)
 
     np.testing.assert_allclose(propagated_forces,reference_propagated_forces)
+
+
+@pytest.mark.parametrize("degenerate", [False, True])
+def test_nonlinear_virtual_sites_against_openmm_reference(degenerate):
+    positions = np.array([
+        [1.3, 0.1, -0.7], [-0.2, 0.9, 2.4],
+        [0.6, -1.8, 0.9], [0.2, 1.3, -0.4],
+        [0., 0., 0.], [0., 0., 0.], [0., 0., 0.],
+    ])
+    if degenerate:
+        positions[:4] = 0.
+    reference = openmm.System()
+    for i in range(len(positions)):
+        reference.addParticle(1. if i < 4 else 0.)
+    reference.setVirtualSite(4, openmm.TwoParticleAverageSite(0, 1, 0.3, 0.7))
+    reference.setVirtualSite(5, openmm.OutOfPlaneSite(0, 2, 3, 0.2, -0.3, 1.7))
+    reference.setVirtualSite(6, openmm.LocalCoordinatesSite(
+        [0, 1, 2, 3], [0.5, 0.25, 0., 0.25], [-1., 0.5, 0.5, 0.],
+        [-1., 0., 0.5, 0.5], openmm.Vec3(0.2, -0.1, 0.3),
+    ))
+    system = System([Atom(position=pos) for pos in positions])
+    definitions = extract_virtual_sites(reference)
+    system.build_virtual_sites(definitions)
+    rebuilt = extract_virtual_sites(_empty_omm_system(system))
+    for original, restored in zip(definitions, rebuilt, strict=True):
+        assert (original.index, original.site_type, original.parents) == (
+            restored.index, restored.site_type, restored.parents,
+        )
+        for expected, actual in zip(
+            original.parent_weights, restored.parent_weights, strict=True,
+        ):
+            np.testing.assert_allclose(actual, expected)
+
+    # A linear energy supplies a distinct, constant force on each virtual site.
+    force = openmm.CustomExternalForce("-(fx*x+fy*y+fz*z)")
+    for name in ("fx", "fy", "fz"):
+        force.addPerParticleParameter(name)
+    raw_forces = np.zeros_like(positions)
+    raw_forces[4:] = [[-0.3, 1.1, 0.6], [0.7, -0.2, 0.4], [1.0, 0.8, -0.9]]
+    for i in range(4, len(positions)):
+        force.addParticle(i, 10.0 * raw_forces[i])
+    reference.addForce(force)
+    integrator = openmm.VerletIntegrator(0.001)
+    context = openmm.Context(
+        reference, integrator, openmm.Platform.getPlatformByName("Reference"),
+    )
+    context.setPositions(positions * unit.angstrom)
+    context.computeVirtualSites()
+    state = context.getState(getPositions=True, getForces=True)
+    np.testing.assert_allclose(
+        system.positions,
+        state.getPositions(asNumpy=True).value_in_unit(unit.angstrom),
+        atol=1e-14,
+    )
+    np.testing.assert_allclose(
+        system.vsite_helper.distribute_forces(raw_forces),
+        state.getForces(asNumpy=True).value_in_unit(unit.kilojoule_per_mole / unit.angstrom),
+        atol=1e-14,
+    )
 
 
 def reference_calculate_positions(water_positions):

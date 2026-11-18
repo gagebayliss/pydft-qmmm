@@ -111,11 +111,11 @@ class System(Sequence[_SystemAtom]):
     virtual_types: ObservedArray[Any, array_str] = field(
         default_factory=lambda: ObservedArray(np.empty(0, str)),
     )
-    virtual_parents: ObservedArray[Any, array_int] = field(
-        default_factory=lambda: ObservedArray(np.empty((0,3), int)),
+    virtual_parents: ObservedArray[Any, array_obj] = field(
+        default_factory=lambda: ObservedArray(np.empty(0, object)),
     )
-    virtual_parent_weights: ObservedArray[Any, array_float] = field(
-        default_factory=lambda: ObservedArray(np.empty((0,3), float)),
+    virtual_parent_weights: ObservedArray[Any, array_obj] = field(
+        default_factory=lambda: ObservedArray(np.empty(0, object)),
     )
 
 
@@ -383,32 +383,27 @@ class System(Sequence[_SystemAtom]):
 
     def build_virtual_sites(
             self,
-            virtual_sites: list[VirtualSite],
+            virtual_sites: Sequence[VirtualSite],
         ) -> None:
-        # Populate ObservedArray objects.
-        virtual_field_names = [
-            "virtual_site_indices",
-            "virtual_types",
-            "virtual_parents",
-            "virtual_parent_weights",
-        ]
-        for name in virtual_field_names:
-            temp = getattr(self, name)
-            for site in virtual_sites:
-                site_value = getattr(
-                    site,
-                    (
-                        "index" if name == "virtual_site_indices"
-                        else "site_type" if name == "virtual_types" 
-                        else "parents" if name == "virtual_parents"
-                        else "parent_weights" if name == "virtual_parent_weights"
-                        else name
-                    ),
-                )
-                temp = np.concatenate((temp, np.asarray([site_value])))
-                    
-            setattr(self, "_" + name, ObservedArray(temp))
-        self._virtual_sites = virtual_sites
+        """Install the system's virtual-site definitions."""
+        # Store one tuple per site so parent counts and parameter shapes can vary.
+        parents = np.empty(len(virtual_sites), dtype=object)
+        weights = np.empty(len(virtual_sites), dtype=object)
+        for i, site in enumerate(virtual_sites):
+            parents[i] = site.parents
+            weights[i] = site.parent_weights
+        self._virtual_site_indices = ObservedArray(
+            np.asarray([site.index for site in virtual_sites], dtype=int),
+        )
+        self._virtual_types = ObservedArray(
+            np.asarray([site.site_type for site in virtual_sites], dtype=str),
+        )
+        self._virtual_parents = ObservedArray(parents)
+        self._virtual_parent_weights = ObservedArray(weights)
+        self._virtual_sites = tuple(virtual_sites)
+        # The helper caches batches against the observed metadata arrays.
+        self.vsite_helper = VirtualSiteHelper(self)
+        self._update_virtual_site_positions(self.positions.base)
 
     def select(self, query: str) -> frozenset[int]:
         """Convert a VMD-like selection query into a set of atom indices.
