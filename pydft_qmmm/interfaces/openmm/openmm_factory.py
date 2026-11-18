@@ -16,6 +16,8 @@ import numpy as np
 import openmm
 import openmm.app
 import openmm.unit
+from openmm.app import CharmmPsfFile
+from openmm.app import CharmmParameterSet
 
 from pydft_qmmm.utils import DependencyImportError
 from pydft_qmmm.utils import compute_lattice_constants
@@ -110,24 +112,24 @@ def openmm_interface_factory(
         omm_forcefield = _build_omm_forcefield(forcefield)
         base_system = _build_omm_system(omm_forcefield, omm_modeller)
     elif not any(x):
-        try:
-            import parmed
-        except ImportError:
-            raise DependencyImportError(
-                "ParmEd",
-                "parsing AMBER, CHARMM, or GROMACS input files",
-                "https://github.com/ParmEd/ParmEd",
-            )
         if len(x) > 1:
             # Assuming a set of CHARMM parameter files and a psf file.
             mask = [fh.endswith(".psf") for fh in forcefield]
             psf = forcefield.pop(mask.index(True))
-            struct = parmed.load_file(psf)
-            params = parmed.charmm.CharmmParameterSet(*forcefield)
+            struct = CharmmPsfFile(psf)
+            params = CharmmParameterSet(*forcefield)
             struct.box_vectors = omm_box
             base_system = struct.createSystem(params)
             omm_topology = struct.topology
         else:
+            try:
+                import parmed
+            except ImportError:
+                raise DependencyImportError(
+                    "ParmEd",
+                    "parsing AMBER, CHARMM, or GROMACS input files",
+                    "https://github.com/ParmEd/ParmEd",
+                )
             # Assuming the file is a GROMACS top and AMBER prmtop files
             struct = parmed.load_file(*forcefield)
             struct.box_vectors = omm_box
