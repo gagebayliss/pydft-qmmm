@@ -75,6 +75,8 @@ class Optimization(Loggable):
             raise TypeError
         # Perform additional simulation setup.
         self.query = query
+        if not "not element Ep Lp" in self.query:
+            self.query += " and not element Ep Lp" # find a better way to do this!
         self.constraints = constraints
         self._offset = np.zeros(system.positions.shape)
         # Todo: See if this is desirable or necessary.
