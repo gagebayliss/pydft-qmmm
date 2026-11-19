@@ -17,8 +17,7 @@ if TYPE_CHECKING:
     from pydft_qmmm.calculators import Results
 
 class QMChargeFit(CalculatorPlugin):
-"""Wrap positions before performing a calculation.
-"""
+    """Fit subsystem I charges after the QM calculation."""
     def __init__(self,charge_fitting_scheme: str = "mbis"):
         super().__init__()
         self.charge_fitting_scheme = charge_fitting_scheme
@@ -26,7 +25,7 @@ class QMChargeFit(CalculatorPlugin):
     ### register
     def modify(self, calculator: Calculator):
         self.calculator = calculator 
-        elif isinstance(calculator, CompositeCalculator):
+        if isinstance(calculator, CompositeCalculator):
             qm_calculators = [
                 calc for calc in calculator.calculators
                 if calc.calculator_group == "QM"
@@ -67,14 +66,14 @@ class QMChargeFit(CalculatorPlugin):
                     self.calculator.system.select(
                         "subsystem I and element Ep Lp"
                     )
-                ))
+                ), dtype=int)
                 self.calculator.system.charges[ep_indices] = 0.0
 
                 qm_nuclei_indices = np.array(sorted(
                     self.calculator.system.select(
                         "subsystem I and not element Ep Lp"
                     )
-                ))
+                ), dtype=int)
                 self.calculator.system.charges[qm_nuclei_indices] = qm_charges
             return results
         return inner
