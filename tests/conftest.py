@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import atexit
 import json
+import os
+from tempfile import TemporaryDirectory
 
+import psi4
 import pytest
 
 from pydft_qmmm import MMHamiltonian
@@ -10,6 +14,21 @@ from pydft_qmmm import System
 from pydft_qmmm import VerletIntegrator
 from pydft_qmmm.plugins import SETTLE
 from pydft_qmmm.utils import Subsystem
+
+def _finalize_psi4():
+    # Psi4 appends timer.dat in the current directory during interpreter exit.
+    previous = os.getcwd()
+    with TemporaryDirectory() as directory:
+        os.chdir(directory)
+        try:
+            psi4.core.finalize()
+        finally:
+            os.chdir(previous)
+
+
+atexit.unregister(psi4.core.finalize)
+atexit.register(_finalize_psi4)
+
 
 @pytest.fixture
 def swm4ndp_system():
