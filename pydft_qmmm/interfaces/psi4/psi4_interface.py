@@ -81,27 +81,27 @@ class Psi4Interface(QMInterface):
         """
         self.potentials.append(potential)
 
-def fit_mm_charges(self,charge_fitting_scheme: str) -> NDArray[np.float64]:
-    """Fit MM point charges to QM electron density.
-                
-    Args:
-        charge_fitting_scheme: one of "mulliken", "mbis".
-                                        
-    Returns:
-        An array of charges for the MM atoms corresponding to QM nuclei.
-    """
-    charge_fitting_scheme = charge_fitting_scheme.lower()
-    wfn = self._generate_wavefunction()
-    charges = None
-    if charge_fitting_scheme == "mulliken":
-        psi4.oeprop(wfn, "MULLIKEN_CHARGES")
-        charges = wfn.variable(f"MULLIKEN CHARGES")
-    elif charge_fitting_scheme == "mbis":
-        psi4.oeprop(wfn, "MBIS_CHARGES")
-        charges = np.asarray(wfn.variable(f"MBIS CHARGES")).reshape((-1))
-    else:
-        raise ValueError(f"Unsupported charge fitting scheme: {charge_fitting_scheme}")
-    return charges
+    def fit_mm_charges(self,charge_fitting_scheme: str) -> NDArray[np.float64]:
+        """Fit MM point charges to QM electron density.
+                    
+        Args:
+            charge_fitting_scheme: one of "mulliken", "mbis".
+                                            
+        Returns:
+            An array of charges for the MM atoms corresponding to QM nuclei.
+        """
+        charge_fitting_scheme = charge_fitting_scheme.lower()
+        wfn = self._generate_wavefunction()
+        charges = None
+        if charge_fitting_scheme == "mulliken":
+            psi4.oeprop(wfn, "MULLIKEN_CHARGES")
+            charges = wfn.variable(f"MULLIKEN CHARGES")
+        elif charge_fitting_scheme == "mbis":
+            psi4.oeprop(wfn, "MBIS_CHARGES")
+            charges = np.asarray(wfn.variable(f"MBIS CHARGES")).reshape((-1))
+        else:
+            raise ValueError(f"Unsupported charge fitting scheme: {charge_fitting_scheme}")
+        return charges
 
     @system_cache("positions", "charges", "elements", "subsystems", "box")
     def _generate_wavefunction(self) -> psi4.core.Wavefunction:
