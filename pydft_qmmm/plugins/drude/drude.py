@@ -1,4 +1,4 @@
-"""Calculator plugin for Drude relaxation with fixed QM forces."""
+"""Calculator plugin for Drude relaxation with a fixed QM density."""
 from __future__ import annotations
 
 __all__ = ["CalculatorDrudeSCF", "QMForceCache", "CachedForceCalculator"]
@@ -113,7 +113,7 @@ class CalculatorDrudeSCF(CalculatorPlugin):
     def modify(self, calculator: Calculator):
         self.calculator = calculator
         self.mm_calculator = calculator
-        self.qm_force_cache: QMForceCache | None = None
+        qm_interface = None
         qm_calculator = None
 
         if isinstance(calculator, CompositeCalculator):
@@ -133,6 +133,7 @@ class CalculatorDrudeSCF(CalculatorPlugin):
             ):
                 raise ValueError("All calculators must share the same system.")
             self.mm_calculator = mm_calculators[0]
+            qm_interface = qm_calculators[0].potential
 
             qm_calculator = CompositeCalculator( # for PME potentials
                 calculator.system,
@@ -143,14 +144,7 @@ class CalculatorDrudeSCF(CalculatorPlugin):
         elif calculator.calculator_group != "MM":
             raise ValueError("Drude relaxation requires an MM calculator.")
 
-        external_potential = None
-
-        if qm_calculator is not None:
-            self.qm_force_cache = QMForceCache()
-            external_potential = CachedForceCalculator(
-                calculator.system, self.qm_force_cache,
-            )
-        adapter = DrudeCalculator(self.mm_calculator, external_potential=external_potential)
+        adapter = DrudeCalculator(self.mm_calculator, qm_interface=qm_interface)
         if not len(adapter.indices):
             raise ValueError("The system must contain Drude particles.")
         self.drude_scf = DrudeSCF(
@@ -168,7 +162,6 @@ class CalculatorDrudeSCF(CalculatorPlugin):
                 tolerance=1e-6,
                 maxiter=10,
             )
-            qm_calculator.register_plugin(self.qm_force_cache)
 
         # OpenMM assigns part of each parent's mass to its oscillator.
         # With SCF relaxation only the parent is integrated.
@@ -178,6 +171,15 @@ class CalculatorDrudeSCF(CalculatorPlugin):
         masses[indices] = 0
         calculator.system.masses[:] = masses
         calculator.system.velocities[indices] = 0
+
+        qm_drudes = calculator.system.select("subsystem I").intersection(indices)
+        if qm_drudes:
+            charges = calculator.system.charges.base.copy()
+            for drude, parent in zip(indices, adapter.parent_indices):
+                if drude in qm_drudes:
+                    charges[parent] += charges[drude]
+                    charges[drude] = 0.0
+            calculator.system.charges[:] = charges
 
     def _modify_calculate(
             self,
@@ -192,7 +194,7 @@ class CalculatorDrudeSCF(CalculatorPlugin):
             if not self._bypass_plugin: # prevent recursion when using MM calculator
                 self._bypass_plugin = True
                 try:
-                    if self.qm_force_cache is not None:
+                    if self.drude_scf.calculator.qm_interface is not None:
                         # The first QM field must see the translated oscillators.
                         self.drude_scf.restore_guess()
                     _, converged = self.scf.solve()

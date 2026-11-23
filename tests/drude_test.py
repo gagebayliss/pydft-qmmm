@@ -1,4 +1,4 @@
-"""Gradient and convergence checks for fixed-force Drude relaxation."""
+"""Gradient and convergence checks for frozen-density Drude relaxation."""
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -13,7 +13,7 @@ from pydft_qmmm.plugins import (
     QMForceCache,
 )
 from pydft_qmmm.system.atom import Atom
-from pydft_qmmm.utils import Subsystem, VirtualSite, extract_virtual_sites
+from pydft_qmmm.utils import KJMOL_PER_EH, Subsystem, VirtualSite, extract_virtual_sites
 
 FORCEFIELD = [
     "tests/swm4ndp_data/swm4ndp.xml",
@@ -32,7 +32,7 @@ def drude_problem(request, drude_dimer, tmp_path):
     mm = MMHamiltonian(
         forcefield=FORCEFIELD, nonbonded_method="NoCutoff", platform="Reference",
     )
-    external_potential = None
+    qm_interface = None
     if request.param:
         psi4 = pytest.importorskip("psi4")
         psi4.set_num_threads(1)
@@ -45,20 +45,18 @@ def drude_problem(request, drude_dimer, tmp_path):
         calculator = (mm[5:] + qm[:5] + coupling).build_calculator(system)
         system.subsystems[5:] = Subsystem.II
         mm_calculator, qm_calculator = calculator.calculators
-        observer = QMForceCache()
-        qm_calculator.register_plugin(observer)
-        qm_calculator.calculate()
-        external_potential = CachedForceCalculator(system, observer)
+        qm_interface = qm_calculator.potential
     else:
         calculator = mm.build_calculator(system)
         mm_calculator = calculator
-    adapter = DrudeCalculator(mm_calculator, external_potential=external_potential)
+    adapter = DrudeCalculator(mm_calculator, qm_interface=qm_interface)
+    adapter.freeze_density()
     return calculator, adapter
 
 
 @pytest.mark.parametrize("step", [1e-4, 5e-5])
-def test_fixed_force_drude_gradient(drude_problem, step):
-    """Check every Drude component, including the frozen-force energy term."""
+def test_frozen_density_drude_gradient(drude_problem, step):
+    """Check every Drude component, including the frozen-density embedding energy."""
     _, adapter = drude_problem
     reference = adapter.state
     _, analytical = adapter.calculate(reference)
@@ -75,12 +73,12 @@ def test_fixed_force_drude_gradient(drude_problem, step):
     finally:
         adapter.state = reference
     error = np.max(np.abs(analytical - numerical))
-    print(f"Fixed-force Drude gradient: h={step:g} A, max error={error:.3e}")
+    print(f"Frozen-density Drude gradient: h={step:g} A, max error={error:.3e}")
     np.testing.assert_allclose(analytical, numerical, atol=2e-5, rtol=0)
 
 
 @pytest.mark.parametrize("algorithm", ["BFGS", "L-BFGS-B"])
-def test_fixed_force_relaxation(drude_problem, algorithm):
+def test_frozen_density_relaxation(drude_problem, algorithm):
     calculator, adapter = drude_problem
     original = calculator.system.positions.base.copy()
     initial_energy, _ = adapter.calculate(adapter.state)
@@ -179,11 +177,7 @@ def test_solver_checks_final_forces_and_restores_accepted_point(
 
 @pytest.mark.parametrize("step", [1e-4, 5e-5])
 def test_full_energy_gradient_before_freezing(drude_problem, step):
-    """Check the physical QM/MM forces used to construct the frozen field.
-
-    This checks a single geometry, not the derivative of the approximate
-    trajectory produced by using the previous step's forces.
-    """
+    """Check the full QM/MM gradient with the density relaxed at each geometry."""
     from pydft_qmmm.utils import numerical_gradient
 
     calculator, _ = drude_problem
@@ -195,10 +189,63 @@ def test_full_energy_gradient_before_freezing(drude_problem, step):
     np.testing.assert_allclose(analytical, numerical, atol=2e-3, rtol=0)
 
 
-def test_calculator_relaxes_drudes(drude_problem):
-    calculator, _ = drude_problem
+def test_embedding_at_fixed_density(drude_problem, monkeypatch):
+    calculator, adapter = drude_problem
+    qm = adapter.qm_interface
+    if qm is None:
+        pytest.skip("Requires QM embedding.")
+
+    system = calculator.system
+    drude = adapter.indices[-1]
+    density = adapter.density_matrix
+    qm.return_external_ixn_component()
+    embedding = qm.compute_components()["External Interaction Energy"]
+    wfn = qm._generate_wavefunction()
+    external = wfn.external_pot()
+    expected = density.vector_dot(external.computePotentialMatrix(wfn.basisset()))
+    expected += external.computeNuclearEnergy(wfn.molecule())
+    assert embedding == pytest.approx(expected * KJMOL_PER_EH)
+    assert qm.compute_embedding_energy(density) == pytest.approx(embedding)
+    field = qm.compute_electric_field(system.positions[[drude]])
+    np.testing.assert_allclose(field[0] * system.charges[drude],
+                               qm.compute_forces()[drude], atol=1e-6)
+
+    def unexpected_wavefunction(*args, **kwargs):
+        pytest.fail("A fixed-density evaluation requested a wavefunction.")
+
+    monkeypatch.setattr(type(qm), "_generate_wavefunction", unexpected_wavefunction)
+    system.positions[drude, 0] += 0.02
+    assert qm.compute_embedding_energy(density) != pytest.approx(embedding)
+    new_field = qm.compute_electric_field(system.positions[[drude]], density)
+    assert not np.allclose(new_field, field)
+    adapter.calculate(adapter.state)
+
+
+def test_calculator_relaxes_drudes(drude_problem, monkeypatch):
+    calculator, adapter = drude_problem
+    if adapter.qm_interface is not None:
+        import psi4
+        from scipy.optimize import minimize
+
+        def unexpected_qm(*args, **kwargs):
+            pytest.fail("The inner minimizer invoked QM SCF or gradients.")
+
+        def minimize_with_frozen_density(*args, **kwargs):
+            with monkeypatch.context() as patch:
+                patch.setattr(psi4, "energy", unexpected_qm)
+                patch.setattr(psi4, "gradient", unexpected_qm)
+                return minimize(*args, **kwargs)
+
+        monkeypatch.setattr("scipy.optimize.minimize", minimize_with_frozen_density)
+    expected_charges = calculator.system.charges.base.copy()
+    if adapter.qm_interface is not None:
+        # Only the first water is in subsystem I.
+        assert expected_charges[4] != 0.0
+        expected_charges[0] += expected_charges[4]
+        expected_charges[4] = 0.0
     plugin = CalculatorDrudeSCF(strict=True)
     calculator.register_plugin(plugin)
+    np.testing.assert_array_equal(calculator.system.charges, expected_charges)
     results = calculator.calculate()
     assert np.isfinite(results.energy)
     residual = results.forces[plugin.drude_scf.calculator.indices]
