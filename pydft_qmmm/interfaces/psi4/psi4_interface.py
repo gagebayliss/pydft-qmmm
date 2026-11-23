@@ -6,10 +6,10 @@ and forces.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from dataclasses import field
 import logging
 import textwrap
+from dataclasses import dataclass
+from dataclasses import field
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -61,6 +61,10 @@ class Psi4Interface(QMInterface):
         default_factory=list,
         init=False,
     )
+    components: list[str] = field(
+        default_factory=list,
+        init=False,
+    )
     frame: list[int] = field(
         default_factory=lambda: [0],
         init=False,
@@ -102,6 +106,12 @@ class Psi4Interface(QMInterface):
         else:
             raise ValueError(f"Unsupported charge fitting scheme: {charge_fitting_scheme}")
         return charges
+
+    def return_external_ixn_component(self) -> None:
+        """Return the external energy interaction as a component.
+        """
+        if "External Interaction Energy" not in self.components:
+            self.components.append("External Interaction Energy")
 
     @system_cache("positions", "charges", "elements", "subsystems", "box")
     def _generate_wavefunction(self) -> psi4.core.Wavefunction:
@@ -174,10 +184,12 @@ class Psi4Interface(QMInterface):
         point_charges = []
         for i in embedding:
             point_charges.append(
-                [self.system.charges[i],
-                 self.system.positions[i, 0] * BOHR_PER_ANGSTROM,
-                 self.system.positions[i, 1] * BOHR_PER_ANGSTROM,
-                 self.system.positions[i, 2] * BOHR_PER_ANGSTROM],
+                [
+                    self.system.charges[i],
+                    self.system.positions[i, 0] * BOHR_PER_ANGSTROM,
+                    self.system.positions[i, 1] * BOHR_PER_ANGSTROM,
+                    self.system.positions[i, 2] * BOHR_PER_ANGSTROM,
+                ],
             )
         if embedding:
             external_potentials.append(np.array(point_charges))
@@ -356,4 +368,29 @@ class Psi4Potential(Psi4Interface, AtomicPotential):
             of the system.
         """
         components: dict[str, float] = {}
+        wfn = self._generate_wavefunction()
+        energy = self._generate_wavefunction().energy() * KJMOL_PER_EH
+        components["Nuclear Energy"] = (
+            wfn.molecule().nuclear_repulsion_energy() * KJMOL_PER_EH
+        )
+        components["Electronic Energy"] = (
+            energy
+            - components["Nuclear Energy"]
+        )
+        if (
+            "External Interaction Energy" in self.components
+            and (extern := wfn.external_pot()) is not None
+        ):
+            D = wfn.Da().clone()
+            D.add(wfn.Db())
+            V_extern = extern.computePotentialMatrix(wfn.basisset())
+            components["External Interaction Energy"] = (
+                psi4.core.doublet(D, V_extern).trace()
+                + extern.computeNuclearEnergy(wfn.molecule())
+            ) * KJMOL_PER_EH
+            components["Electronic Energy"] = (
+                energy
+                - components["Nuclear Energy"]
+                - components["External Interaction Energy"]
+            )
         return components

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 __all__ = ["openmm_interface_factory"]
 
+import math
+import textwrap
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -22,6 +24,7 @@ from openmm.app import CharmmParameterSet
 from pydft_qmmm.utils import DependencyImportError
 from pydft_qmmm.utils import compute_lattice_constants
 from pydft_qmmm.utils import extract_virtual_sites
+from pydft_qmmm.utils import PyDFTQMMMException
 
 from . import openmm_interface
 
@@ -159,6 +162,27 @@ def openmm_interface_factory(
     aux_system = _empty_omm_system(system)
     base_context = _build_omm_context(base_system, omm_modeller, platform, properties)
     aux_context = _build_omm_context(aux_system, omm_modeller, platform, properties)
+
+    # Sanity check the PME settings.
+    if nonbonded_method.upper() == "PME":
+        threads = base_context.getPlatform().getPropertyValue(
+            base_context,
+            "Threads",
+        )
+        grid_size = (math.prod(pme_gridnumber) + 3) // 4
+        grid_end = grid_size * (int(threads) + 1)
+        if grid_end > 2**31:
+            raise PyDFTQMMMException(
+                textwrap.fill(
+                    f"\nA PME grid size of {pme_gridnumber} with a "
+                    f"thread count of {threads} causes an integer "
+                    "overflow error in the CPU platform of OpenMM, "
+                    "which uses single precision.  Please reduce "
+                    "either the thread count or the fineness of the "
+                    "PME grid.",
+                ),
+            )
+
     wrapper = openmm_interface.OpenMMPotential(
         system,
         base_context=base_context,
