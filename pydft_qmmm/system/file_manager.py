@@ -109,7 +109,7 @@ def _read_pdb(
             element = line[76:78].strip().lower().capitalize()
             if element == "":
                 element = "Ep"
-                warnings.Warn(f"No element found for line {line_index}. Assuming virtual site.\n")
+                warnings.warn(f"No element found for line {line_index}. Assuming virtual site.\n")
             mass = ELEMENT_TO_MASS.get(element, 0.)
             atom = Atom(
                 position=position,
