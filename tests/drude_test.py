@@ -9,7 +9,7 @@ import pytest
 
 from pydft_qmmm import MMHamiltonian, QMHamiltonian, QMMMHamiltonian, System
 from pydft_qmmm.plugins import (
-    CachedForceCalculator, CompositeSCF, DrudeCalculator, DrudeSCF,
+    CachedForceCalculator, CalculatorDrudeSCF, CompositeSCF, DrudeCalculator, DrudeSCF,
     IntegratorDrudeSCF, QMForceCache,
     extract_drude_data,
 )
@@ -23,9 +23,7 @@ FORCEFIELD = [
 
 @pytest.fixture
 def drude_dimer():
-    system = System.load("tests/swm4ndp_data/hoh_dimer.pdb", *FORCEFIELD)
-    system.positions[:] = virtual_sites.compute_positions(system, system.positions)
-    return system
+    return System.load("tests/swm4ndp_data/hoh_dimer.pdb")
 
 
 @pytest.fixture(params=[False, True], ids=["mm", "qmmm"])
@@ -54,7 +52,7 @@ def drude_problem(request, drude_dimer, tmp_path):
     else:
         calculator = mm.build_calculator(system)
         mm_calculator = calculator
-    data = extract_drude_data(load_omm_system(system, FORCEFIELD))
+    data = system.drude_data
     adapter = DrudeCalculator(mm_calculator, data, external_potential)
     return calculator, adapter
 
@@ -335,3 +333,37 @@ def test_general_external_calculator(drude_dimer):
     _, converged = DrudeSCF(adapter, force_tolerance=1e-9).solve()
     assert converged
     np.testing.assert_allclose(adapter.state, initial + 0.1, atol=1e-9)
+
+
+def test_scf_plugin_mass_transfer_and_warm_start(drude_dimer, monkeypatch):
+    system = drude_dimer
+    calculator = MMHamiltonian(
+        forcefield=FORCEFIELD, nonbonded_method="NoCutoff", platform="Reference",
+    ).build_calculator(system)
+    data = system.drude_data
+    copied = system.copy()
+    np.testing.assert_array_equal(copied.drude_data.drude_indices, data.drude_indices)
+    np.testing.assert_array_equal(copied.virtual_parameters, system.virtual_parameters)
+    initial_masses = system.masses.base.copy()
+    plugin = CalculatorDrudeSCF(strict=True)
+    calculator.register_plugin(plugin)
+    np.testing.assert_allclose(system.masses[data.drude_indices], 0.0)
+    np.testing.assert_allclose(
+        system.masses[data.parent_indices],
+        initial_masses[data.parent_indices] + initial_masses[data.drude_indices],
+    )
+    assert sum(system.masses) == pytest.approx(sum(initial_masses))
+
+    calculator.calculate()
+    previous = plugin.scf.calculator.state
+    system.positions[data.parent_indices] = system.positions.base[data.parent_indices] + 0.01
+    assert not np.allclose(plugin.scf.calculator.state, previous)
+
+    from scipy.optimize import minimize
+
+    def check_initial(objective, initial, **kwargs):
+        np.testing.assert_allclose(initial, previous, atol=1e-14)
+        return minimize(objective, initial, **kwargs)
+
+    monkeypatch.setattr("scipy.optimize.minimize", check_initial)
+    calculator.calculate()

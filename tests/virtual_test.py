@@ -96,7 +96,7 @@ def test_nonlinear_virtual_sites_against_openmm_reference(degenerate):
     positions = np.array([
         [1.3, 0.1, -0.7], [-0.2, 0.9, 2.4],
         [0.6, -1.8, 0.9], [0.2, 1.3, -0.4],
-        [0., 0., 0.], [0., 0., 0.], [0., 0., 0.],
+        [0., 0., 0.], [0., 0., 0.], [0., 0., 0.], [0., 0., 0.],
     ])
     if degenerate:
         positions[:4] = 0.
@@ -109,6 +109,7 @@ def test_nonlinear_virtual_sites_against_openmm_reference(degenerate):
         [0, 1, 2, 3], [0.5, 0.25, 0., 0.25], [-1., 0.5, 0.5, 0.],
         [-1., 0., 0.5, 0.5], openmm.Vec3(0.2, -0.1, 0.3),
     ))
+    reference.setVirtualSite(7, openmm.ThreeParticleAverageSite(0, 1, 3, 0.4, 0.1, 0.5))
     system = System([Atom(position=pos) for pos in positions])
     definitions = extract_virtual_sites(reference)
     system.build_virtual_sites(definitions)
@@ -118,7 +119,7 @@ def test_nonlinear_virtual_sites_against_openmm_reference(degenerate):
             restored.index, restored.site_type, restored.parents,
         )
         for expected, actual in zip(
-            original.parent_weights, restored.parent_weights, strict=True,
+            original.parameters, restored.parameters, strict=True,
         ):
             np.testing.assert_allclose(actual, expected)
 
@@ -127,7 +128,10 @@ def test_nonlinear_virtual_sites_against_openmm_reference(degenerate):
     for name in ("fx", "fy", "fz"):
         force.addPerParticleParameter(name)
     raw_forces = np.zeros_like(positions)
-    raw_forces[4:] = [[-0.3, 1.1, 0.6], [0.7, -0.2, 0.4], [1.0, 0.8, -0.9]]
+    raw_forces[4:] = [
+        [-0.3, 1.1, 0.6], [0.7, -0.2, 0.4],
+        [1.0, 0.8, -0.9], [0.2, 0.3, -0.7],
+    ]
     for i in range(4, len(positions)):
         force.addParticle(i, 10.0 * raw_forces[i])
     reference.addForce(force)

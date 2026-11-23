@@ -29,7 +29,7 @@ from .selection_utils import FAST_KEYWORDS
 from .selection_utils import SLOW_KEYWORDS
 from .file_manager import load_system
 
-from pydft_qmmm.utils import VirtualSiteHelper
+from pydft_qmmm.utils import VirtualSite, VirtualSiteHelper
 
 from pydft_qmmm.utils import system_cache
 
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from typing import Any
     from collections.abc import Callable
     from numpy.typing import NDArray
-    from pydft_qmmm.utils.virtual_sites import VirtualSite
+    from pydft_qmmm.utils.drude_data import DrudeData
 
 
 def _del_attr(self: System, attr: str) -> Callable[[Any], None]:
@@ -114,7 +114,7 @@ class System(Sequence[_SystemAtom]):
     virtual_parents: ObservedArray[Any, array_obj] = field(
         default_factory=lambda: ObservedArray(np.empty(0, object)),
     )
-    virtual_parent_weights: ObservedArray[Any, array_obj] = field(
+    virtual_parameters: ObservedArray[Any, array_obj] = field(
         default_factory=lambda: ObservedArray(np.empty(0, object)),
     )
 
@@ -125,7 +125,8 @@ class System(Sequence[_SystemAtom]):
             atoms: list[Atom],
             box: NDArray[np.float64] = np.zeros((3, 3)),
     ) -> None:
-        self._virtual_sites = None
+        self.drude_data: DrudeData | None = None
+        self._virtual_sites = ()
         self._atoms = None
         self._system_atoms = None
         self.vsite_helper = VirtualSiteHelper(self)
@@ -227,7 +228,7 @@ class System(Sequence[_SystemAtom]):
                 "virtual_site_indices",
                 "virtual_types",
                 "virtual_parents",
-                "virtual_parent_weights",
+                "virtual_parameters",
                 ]
             if name in ignore:
                 continue
@@ -252,7 +253,7 @@ class System(Sequence[_SystemAtom]):
                     "virtual_site_indices",
                     "virtual_types",
                     "virtual_parents",
-                    "virtual_parent_weights",
+                    "virtual_parameters",
                     ]
                 if name in ignore:
                     continue
@@ -275,9 +276,6 @@ class System(Sequence[_SystemAtom]):
         Returns:
             An identical System object.
         """
-        if len(self.virtual_site_indices) !=0:
-            raise NotimplementedError()
-
         atoms = [
             Atom(**{
                 name: deepcopy(getattr(atom, name))
@@ -288,10 +286,14 @@ class System(Sequence[_SystemAtom]):
             for atom in self
         ]
         copied = System(atoms, self.box.base.copy())
-        for name in self.__dataclass_fields__: # why do we do this?
-            # BROKEN
-            if name.startswith("virtual_"):
-                getattr(copied, name)[:] = getattr(self, name)
+        copied.build_virtual_sites([
+            VirtualSite(index, kind, tuple(parents), deepcopy(parameters))
+            for index, kind, parents, parameters in zip(
+                self.virtual_site_indices, self.virtual_types, self.virtual_parents,
+                self.virtual_parameters, strict=True,
+            )
+        ])
+        copied.drude_data = deepcopy(self.drude_data)
         return copied
 
     def __deepcopy__(self, memo: dict[int, Any]) -> System:
@@ -388,10 +390,10 @@ class System(Sequence[_SystemAtom]):
         """Install the system's virtual-site definitions."""
         # Store one tuple per site so parent counts and parameter shapes can vary.
         parents = np.empty(len(virtual_sites), dtype=object)
-        weights = np.empty(len(virtual_sites), dtype=object)
+        parameters = np.empty(len(virtual_sites), dtype=object)
         for i, site in enumerate(virtual_sites):
             parents[i] = site.parents
-            weights[i] = site.parent_weights
+            parameters[i] = site.parameters
         self._virtual_site_indices = ObservedArray(
             np.asarray([site.index for site in virtual_sites], dtype=int),
         )
@@ -399,7 +401,7 @@ class System(Sequence[_SystemAtom]):
             np.asarray([site.site_type for site in virtual_sites], dtype=str),
         )
         self._virtual_parents = ObservedArray(parents)
-        self._virtual_parent_weights = ObservedArray(weights)
+        self._virtual_parameters = ObservedArray(parameters)
         self._virtual_sites = tuple(virtual_sites)
         # The helper caches batches against the observed metadata arrays.
         self.vsite_helper = VirtualSiteHelper(self)

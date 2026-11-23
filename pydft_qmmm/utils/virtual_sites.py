@@ -69,7 +69,7 @@ class VirtualSite:
         index: The index of the virtual site in the total system.
         site_type: The kind of virtual site (three average, etc.).
         parents: The real or virtual atoms the site is derived from.
-        parent_weights: Parameters for the site. Out-of-plane sites store
+        parameters: Parameters for the site. Out-of-plane sites store
             (w12, w13, wcross), with wcross in inverse angstroms. Local
             coordinate sites store (origin_weights, x_weights, y_weights,
             local_position), with local_position in angstroms.
@@ -78,7 +78,7 @@ class VirtualSite:
     index: int
     site_type: str
     parents: tuple[int, ...]
-    parent_weights: tuple[Any, ...]
+    parameters: tuple[Any, ...]
 
 
 def extract_virtual_sites(system: openmm.System) -> tuple[VirtualSite, ...]:
@@ -135,15 +135,15 @@ class VirtualSiteHelper:
 
     @system_cache(
         "virtual_site_indices", "virtual_types", "virtual_parents",
-        "virtual_parent_weights",
+        "virtual_parameters",
     )
     def _get_batches(self):
         indices = list(self.system.virtual_site_indices)
         types = list(self.system.virtual_types)
         parents = list(self.system.virtual_parents)
-        weights = list(self.system.virtual_parent_weights)
+        parameters = list(self.system.virtual_parameters)
 
-        if not (len(indices) == len(types) == len(parents) == len(weights)):
+        if not (len(indices) == len(types) == len(parents) == len(parameters)):
             raise ValueError("Inconsistent virtual-site metadata lengths")
 
         virtual_indices = set(map(int, indices))
@@ -157,22 +157,22 @@ class VirtualSiteHelper:
                 raise NotImplementedError("Virtual sites depending on other virtual sites")
             if site_type == "local_coordinates":
                 if (
-                    len(weights[i]) != 4
-                    or any(len(w) != len(parents[i]) for w in weights[i][:3])
-                    or len(weights[i][3]) != 3
+                    len(parameters[i]) != 4
+                    or any(len(w) != len(parents[i]) for w in parameters[i][:3])
+                    or len(parameters[i][3]) != 3
                 ):
                     raise ValueError(f"Invalid {site_type} site at index {indices[i]}")
                 nonlinear_sites.append(VirtualSite(
                     indices[i], site_type, tuple(parents[i]),
-                    (*weights[i][:3], xp.asarray(weights[i][3], dtype=xp.float64)),
+                    (*parameters[i][:3], xp.asarray(parameters[i][3], dtype=xp.float64)),
                 ))
                 continue
             expected = 2 if site_type == "two_average" else 3
-            if len(parents[i]) != expected or len(weights[i]) != expected:
+            if len(parents[i]) != expected or len(parameters[i]) != expected:
                 raise ValueError(f"Invalid {site_type} site at index {indices[i]}")
             if site_type == "out_of_plane":
                 nonlinear_sites.append(VirtualSite(
-                    indices[i], site_type, tuple(parents[i]), tuple(weights[i]),
+                    indices[i], site_type, tuple(parents[i]), tuple(parameters[i]),
                 ))
             else:
                 groups[site_type].append(i)
@@ -185,10 +185,10 @@ class VirtualSiteHelper:
             parent_indices = xp.stack(
                 [xp.asarray(parents[i], dtype=xp.int64) for i in rows]
             )
-            parent_weights = xp.stack(
-                [xp.asarray(weights[i], dtype=xp.float64) for i in rows]
+            batch_parameters = xp.stack(
+                [xp.asarray(parameters[i], dtype=xp.float64) for i in rows]
             )
-            batches.append((site_indices, parent_indices, parent_weights))
+            batches.append((site_indices, parent_indices, batch_parameters))
         return batches, nonlinear_sites
 
     def compute_positions(self, positions: NDArray[float64]) -> NDArray[float64]:
@@ -205,15 +205,15 @@ class VirtualSiteHelper:
             raise ValueError("Position array length does not match system")
 
         batches, nonlinear_sites = self._get_batches()
-        for indices, parents, weights in batches:
+        for indices, parents, parameters in batches:
             # (n_sites, n_parents, 3) -> (n_sites, 3)
             new_positions[indices] = xp.sum(
-                new_positions[parents] * weights[:, :, None], axis=1
+                new_positions[parents] * parameters[:, :, None], axis=1
             )
         for site in nonlinear_sites:
             if site.site_type == "out_of_plane":
                 p1, p2, p3 = site.parents
-                w12, w13, wcross = site.parent_weights
+                w12, w13, wcross = site.parameters
                 v12 = new_positions[p2] - new_positions[p1]
                 v13 = new_positions[p3] - new_positions[p1]
                 cross = xp.cross(v12, v13)
@@ -221,7 +221,7 @@ class VirtualSiteHelper:
                     new_positions[p1] + v12*w12 + v13*w13 + cross*wcross
                 )
             else:
-                originWeights, xWeights, yWeights, localPosition = site.parent_weights
+                originWeights, xWeights, yWeights, localPosition = site.parameters
                 origin = xp.zeros(3)
                 xdir = xp.zeros(3)
                 ydir = xp.zeros(3)
@@ -269,16 +269,16 @@ class VirtualSiteHelper:
             raise ValueError("Force array length does not match system")
 
         batches, nonlinear_sites = self._get_batches()
-        for indices, parents, weights in batches:
+        for indices, parents, parameters in batches:
             # Flatten to permit duplicate parent indices, which ordinary indexed
             # '+=' does NOT accumulate correctly for NumPy or CuPy.
             contributions = (
-                new_forces[indices, None, :] * weights[:, :, None]
+                new_forces[indices, None, :] * parameters[:, :, None]
             ).reshape(-1, 3)
             xp.add.at(new_forces, parents.ravel(), contributions)
         if nonlinear_sites:
             if positions is None:
-                positions = self.system.positions
+                positions = self.system.positions.base
             atomCoordinates = xp.asarray(positions)
             if len(atomCoordinates) != len(self.system):
                 raise ValueError("Position array length does not match system")
@@ -286,7 +286,7 @@ class VirtualSiteHelper:
             f = new_forces[site.index]
             if site.site_type == "out_of_plane":
                 p1, p2, p3 = site.parents
-                w12, w13, wcross = site.parent_weights
+                w12, w13, wcross = site.parameters
                 v12 = atomCoordinates[p2] - atomCoordinates[p1]
                 v13 = atomCoordinates[p3] - atomCoordinates[p1]
                 f2 = xp.stack((
@@ -303,7 +303,7 @@ class VirtualSiteHelper:
                 new_forces[p2] += f2
                 new_forces[p3] += f3
             else:
-                originWeights, wx, wy, localPosition = site.parent_weights
+                originWeights, wx, wy, localPosition = site.parameters
                 xdir = xp.zeros(3)
                 ydir = xp.zeros(3)
                 for j, p in enumerate(site.parents):

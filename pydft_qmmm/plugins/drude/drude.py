@@ -16,9 +16,7 @@ from pydft_qmmm.calculators import CalculatorPlugin
 from pydft_qmmm.calculators import Results
 from pydft_qmmm.calculators import CompositeCalculator
 from pydft_qmmm.integrators import IntegratorPlugin
-from pydft_qmmm.utils import load_omm_system
 
-from .drude_data import extract_drude_data
 from .drude_solver import DrudeCalculator
 from .drude_solver import DrudeSCF
 from .drude_solver import CompositeSCF
@@ -112,9 +110,8 @@ class IntegratorDrudeSCF(IntegratorPlugin):
 class CalculatorDrudeSCF(CalculatorPlugin):
     """
     Args:
-        calculator: MM calculator or a composite containing one MM and
-            one QM calculator. 
-        forcefield: XML forcefield files used to identify Drude particles.
+        forcefield: Optional legacy argument. The MM calculator supplies
+            the system's Drude metadata.
         force_tolerance: Maximum residual force component in kJ/mol/angstrom.
         algorithm: any scipy.optimize algorithm not requiring a Hessian.
         max_iterations: Maximum Drude optimization iterations per step.
@@ -122,14 +119,12 @@ class CalculatorDrudeSCF(CalculatorPlugin):
 
     def __init__(
             self,
-            forcefield: list[str] | str,
+            forcefield: list[str] | str | None = None,
             force_tolerance: float = 0.10,
             algorithm: str = "L-BFGS-B",
             max_iterations: int = 50,
             strict: bool = False,
     ) -> None:
-        pass
-        self.forcefield = forcefield
         self.force_tolerance = force_tolerance
         self.algorithm = algorithm
         self.max_iterations = max_iterations
@@ -169,10 +164,9 @@ class CalculatorDrudeSCF(CalculatorPlugin):
         elif calculator.calculator_group != "MM":
             raise ValueError("Drude relaxation requires an MM calculator.")
 
-        omm_system = load_omm_system(calculator.system, self.forcefield)
-        self.drude_data = extract_drude_data(omm_system)
+        self.drude_data = calculator.system.drude_data
         if self.drude_data is None or not len(self.drude_data):
-            raise ValueError("The forcefield must contain Drude particles.")
+            raise ValueError("The system must contain Drude particles.")
         external_potential = None
 
         if qm_calculator is not None:
@@ -180,38 +174,37 @@ class CalculatorDrudeSCF(CalculatorPlugin):
             external_potential = CachedForceCalculator(
                 calculator.system, self.qm_force_cache,
             )
-            drude_scf = DrudeSCF(
-                DrudeCalculator(
-                    self.mm_calculator, self.drude_data, external_potential,
-                ),
-                max_iterations=self.max_iterations,
-                algorithm=self.algorithm,
-                force_tolerance=self.force_tolerance,
-            )
-            qm_scf = SCFAdapter(qm_calculator)
+        self.drude_scf = DrudeSCF(
+            DrudeCalculator(self.mm_calculator, self.drude_data, external_potential),
+            max_iterations=self.max_iterations,
+            algorithm=self.algorithm,
+            force_tolerance=self.force_tolerance,
+        )
+        if qm_calculator is None:
+            self.scf = self.drude_scf
+        else:
             self.scf = CompositeSCF(
-               [qm_scf, drude_scf],
-               objective_index=0, # use QM energy as objective function
-               tolerance=1e-6, # QM energy should not change by more than this after Drude iterations
-               maxiter=10, # 10 macroiterations
+                [SCFAdapter(qm_calculator), self.drude_scf],
+                objective_index=0,  # Compare QM energies across macroiterations.
+                tolerance=1e-6,
+                maxiter=10,
             )
             qm_calculator.register_plugin(self.qm_force_cache)
 
-        else:
-            self.scf = DrudeSCF(
-                DrudeCalculator(
-                    self.mm_calculator, self.drude_data,
-                ),
-                max_iterations=self.max_iterations,
-                algorithm=self.algorithm,
-                force_tolerance=self.force_tolerance,
-            )
+        # OpenMM assigns part of each parent's mass to its oscillator.
+        # With SCF relaxation only the parent is integrated.
+        masses = calculator.system.masses.base.copy()
+        indices = self.drude_data.drude_indices
+        np.add.at(masses, self.drude_data.parent_indices, masses[indices])
+        masses[indices] = 0
+        calculator.system.masses[:] = masses
+        calculator.system.velocities[indices] = 0
 
     def _modify_calculate(
             self,
-            calculate: Callable[[Bool,Bool], Results],
-        ) -> Callable[[Bool,Bool], Results]:
-        """Return relaxed positions without mutating the input system."""
+            calculate: Callable[[bool, bool], Results],
+        ) -> Callable[[bool, bool], Results]:
+        """Relax Drude coordinates before evaluating the requested result."""
         def inner(
                 return_forces: bool = True,
                 return_components: bool = True,
@@ -219,13 +212,18 @@ class CalculatorDrudeSCF(CalculatorPlugin):
             
             if not self._bypass_plugin: # prevent recursion when using MM calculator
                 self._bypass_plugin = True
-                energy, converged = self.scf.solve()
-                if not converged and self.strict:
-                    raise RuntimeError(
-                        "Drude SCF did not reach the force tolerance."
-                    )
-                self._bypass_plugin = False
-                
+                try:
+                    if self.qm_force_cache is not None:
+                        # The first QM field must see the translated oscillators.
+                        self.drude_scf.restore_guess()
+                    _, converged = self.scf.solve()
+                    if not converged and self.strict:
+                        raise RuntimeError(
+                            "Drude SCF did not reach the force tolerance."
+                        )
+                finally:
+                    self._bypass_plugin = False
+
             # TODO
             # can avoid this extra calculation by
             # using systemcache on calculate

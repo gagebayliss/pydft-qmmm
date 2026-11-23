@@ -21,6 +21,7 @@ from openmm.app import CharmmParameterSet
 
 from pydft_qmmm.utils import DependencyImportError
 from pydft_qmmm.utils import compute_lattice_constants
+from pydft_qmmm.utils.drude_data import extract_drude_data
 from pydft_qmmm.utils import extract_virtual_sites
 
 from . import openmm_interface
@@ -155,7 +156,8 @@ def openmm_interface_factory(
         base_system,
     )
     _adjust_system(system, base_system)
-    system.build_virtual_sites(extract_virtual_sites(base_system)) # new
+    system.drude_data = extract_drude_data(base_system)
+    system.build_virtual_sites(extract_virtual_sites(base_system))
     aux_system = _empty_omm_system(system)
     base_context = _build_omm_context(base_system, omm_modeller, platform, properties)
     aux_context = _build_omm_context(aux_system, omm_modeller, platform, properties)
@@ -292,16 +294,16 @@ def _empty_omm_system(system: System, add_virtual_sites = True) -> openmm.System
     for i, site_index in enumerate(system.virtual_site_indices):
         site_type = system.virtual_types[i]
         parents = tuple(int(p) for p in system.virtual_parents[i])
-        weights = system.virtual_parent_weights[i]
+        parameters = system.virtual_parameters[i]
         if site_type == "two_average":
-            site = openmm.TwoParticleAverageSite(*parents, *weights)
+            site = openmm.TwoParticleAverageSite(*parents, *parameters)
         elif site_type == "three_average":
-            site = openmm.ThreeParticleAverageSite(*parents, *weights)
+            site = openmm.ThreeParticleAverageSite(*parents, *parameters)
         elif site_type == "out_of_plane":
-            w12, w13, wcross = weights
+            w12, w13, wcross = parameters
             site = openmm.OutOfPlaneSite(*parents, w12, w13, wcross * 10.0)
         elif site_type == "local_coordinates":
-            origin_weights, x_weights, y_weights, local_position = weights
+            origin_weights, x_weights, y_weights, local_position = parameters
             site = openmm.LocalCoordinatesSite(
                 parents, origin_weights, x_weights, y_weights,
                 openmm.Vec3(*local_position) * openmm.unit.angstrom,

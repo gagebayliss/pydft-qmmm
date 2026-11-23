@@ -98,6 +98,12 @@ class DrudeSCF:
         self.algorithm = algorithm
         self.force_tolerance = force_tolerance
         self.result: OptimizeResult | None = None
+        self._last_displacements: NDArray[np.float64] | None = None
+
+    def restore_guess(self) -> None:
+        """Place the previous solution relative to the current parents."""
+        if self._last_displacements is not None:
+            self.calculator.state = self._last_displacements
 
     def solve(self) -> tuple[float, bool]:
         from scipy.optimize import minimize
@@ -111,19 +117,36 @@ class DrudeSCF:
         }
         if self.algorithm == "L-BFGS-B":
             options["ftol"] = 0.0
+        initial = self._last_displacements
+        if initial is None:
+            initial = self.calculator.state
         self.result = minimize(
             self.calculator.calculate,
-            self.calculator.state,
+            initial.copy(),
             jac=True,
             method=self.algorithm,
             options=options,
         )
+        # A failed L-BFGS-B line search can leave a good accepted point
+        # near the minimum. Retry once with fresh curvature information.
+        if (
+            self.algorithm == "L-BFGS-B" and not self.result.success
+            and self.result.status == 2
+            and 0 < self.result.nit < self.max_iterations
+        ):
+            options["maxiter"] -= self.result.nit
+            self.result = minimize(
+                self.calculator.calculate, self.result.x, jac=True,
+                method=self.algorithm, options=options,
+            )
         energy, gradient = self.calculator.calculate(self.result.x)
         converged = bool(
             np.isfinite(energy)
             and np.all(np.isfinite(gradient))
             and np.max(np.abs(gradient)) <= self.force_tolerance
         )
+        if converged:
+            self._last_displacements = self.result.x.copy()
         return energy, converged
 
 
@@ -183,7 +206,7 @@ class CompositeSCF:
                 all_converged = all_converged and converged
                 if index == self.objective_index:
                     value = energy
-                    if all_converged and abs(previous_value - value) <= self.tolerance:
-                        return value, True
+            if all_converged and abs(previous_value - value) <= self.tolerance:
+                return value, True
             previous_value = value
         return value, False
