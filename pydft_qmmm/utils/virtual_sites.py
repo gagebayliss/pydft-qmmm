@@ -72,13 +72,37 @@ class VirtualSite:
         parameters: Parameters for the site. Out-of-plane sites store
             (w12, w13, wcross), with wcross in inverse angstroms. Local
             coordinate sites store (origin_weights, x_weights, y_weights,
-            local_position), with local_position in angstroms.
+            local_position), with local_position in angstroms. Drude sites store
+            (charge, polarizability, spring_constant) in elementary charge,
+            angstrom^3, and kJ/mol/angstrom^2, with one oscillator parent.
     """
 
     index: int
     site_type: str
     parents: tuple[int, ...]
     parameters: tuple[Any, ...]
+
+
+def _extract_drude_sites(system: openmm.System) -> tuple[VirtualSite, ...]:
+    """Read oscillator sites from the force that owns their OpenMM coordinates."""
+    sites = []
+    # OpenMM Coulomb constant in kJ angstrom / (mol e^2).
+    coulomb_constant = 138.93545764438198 * 10
+    drude_forces = [force for force in system.getForces()
+                    if isinstance(force, openmm.DrudeForce)]
+    if len(drude_forces) > 1:
+        raise ValueError("Expected one DrudeForce in the OpenMM system.")
+    if drude_forces:
+        force = drude_forces[0]
+        for i in range(force.getNumParticles()):
+            index, parent, _, _, _, charge, alpha, _, _ = force.getParticleParameters(i)
+            charge = charge.value_in_unit(openmm.unit.elementary_charge)
+            alpha = alpha.value_in_unit(openmm.unit.angstrom**3)
+            sites.append(VirtualSite(
+                index, "drude", (parent,),
+                (charge, alpha, coulomb_constant * charge**2 / alpha),
+            ))
+    return tuple(sites)
 
 
 def extract_virtual_sites(system: openmm.System) -> tuple[VirtualSite, ...]:
@@ -121,7 +145,8 @@ def extract_virtual_sites(system: openmm.System) -> tuple[VirtualSite, ...]:
             raise TypeError(
                 f"Unsupported OpenMM virtual-site type: {type(site).__name__}",
             )
-    return tuple(sites)
+    sites.extend(_extract_drude_sites(system))
+    return tuple(sorted(sites, key=lambda site: site.index))
 
 
 class VirtualSiteHelper:
@@ -146,14 +171,21 @@ class VirtualSiteHelper:
         if not (len(indices) == len(types) == len(parents) == len(parameters)):
             raise ValueError("Inconsistent virtual-site metadata lengths")
 
-        virtual_indices = set(map(int, indices))
+        geometric_indices = {
+            index for index, kind in zip(indices, types) if kind != "drude"
+        }
         groups = {"two_average": [], "three_average": []}
 
         nonlinear_sites = []
         for i, site_type in enumerate(types):
+            if site_type == "drude":
+                if len(parents[i]) != 1 or len(parameters[i]) != 3:
+                    raise ValueError(f"Invalid drude site at index {indices[i]}")
+                # SCF varies this coordinate and needs its unmodified force.
+                continue
             if site_type not in (*groups, "out_of_plane", "local_coordinates"):
                 raise NotImplementedError(f"Unsupported virtual-site type: {site_type}")
-            if any(int(parent) in virtual_indices for parent in parents[i]):
+            if any(int(parent) in geometric_indices for parent in parents[i]):
                 raise NotImplementedError("Virtual sites depending on other virtual sites")
             if site_type == "local_coordinates":
                 if (

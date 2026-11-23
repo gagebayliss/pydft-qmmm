@@ -21,7 +21,6 @@ from openmm.app import CharmmParameterSet
 
 from pydft_qmmm.utils import DependencyImportError
 from pydft_qmmm.utils import compute_lattice_constants
-from pydft_qmmm.utils.drude_data import extract_drude_data
 from pydft_qmmm.utils import extract_virtual_sites
 
 from . import openmm_interface
@@ -156,7 +155,6 @@ def openmm_interface_factory(
         base_system,
     )
     _adjust_system(system, base_system)
-    system.drude_data = extract_drude_data(base_system)
     system.build_virtual_sites(extract_virtual_sites(base_system))
     aux_system = _empty_omm_system(system)
     base_context = _build_omm_context(base_system, omm_modeller, platform, properties)
@@ -293,6 +291,10 @@ def _empty_omm_system(system: System, add_virtual_sites = True) -> openmm.System
 
     for i, site_index in enumerate(system.virtual_site_indices):
         site_type = system.virtual_types[i]
+        if site_type == "drude":
+            # DrudeForce in the base context supplies the spring. The auxiliary
+            # context receives these independent particle coordinates directly.
+            continue
         parents = tuple(int(p) for p in system.virtual_parents[i])
         parameters = system.virtual_parameters[i]
         if site_type == "two_average":

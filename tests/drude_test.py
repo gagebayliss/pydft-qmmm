@@ -52,8 +52,7 @@ def drude_problem(request, drude_dimer, tmp_path):
     else:
         calculator = mm.build_calculator(system)
         mm_calculator = calculator
-    data = system.drude_data
-    adapter = DrudeCalculator(mm_calculator, data, external_potential)
+    adapter = DrudeCalculator(mm_calculator, external_potential=external_potential)
     return calculator, adapter
 
 
@@ -340,23 +339,34 @@ def test_scf_plugin_mass_transfer_and_warm_start(drude_dimer, monkeypatch):
     calculator = MMHamiltonian(
         forcefield=FORCEFIELD, nonbonded_method="NoCutoff", platform="Reference",
     ).build_calculator(system)
-    data = system.drude_data
+    indices = [4, 9]
+    parents = [0, 5]
+    np.testing.assert_array_equal(system.virtual_site_indices, [3, 4, 8, 9])
+    np.testing.assert_array_equal(
+        system.virtual_types, ["three_average", "drude", "three_average", "drude"],
+    )
+    for row, parent in zip([1, 3], parents):
+        assert system.virtual_parents[row] == (parent,)
+        charge, alpha, spring = system.virtual_parameters[row]
+        assert charge == pytest.approx(system.charges[system.virtual_site_indices[row]])
+        assert alpha == pytest.approx(0.978253)
+        assert spring == pytest.approx(4183.874769695973)
     copied = system.copy()
-    np.testing.assert_array_equal(copied.drude_data.drude_indices, data.drude_indices)
+    np.testing.assert_array_equal(copied.virtual_types, system.virtual_types)
     np.testing.assert_array_equal(copied.virtual_parameters, system.virtual_parameters)
     initial_masses = system.masses.base.copy()
     plugin = CalculatorDrudeSCF(strict=True)
     calculator.register_plugin(plugin)
-    np.testing.assert_allclose(system.masses[data.drude_indices], 0.0)
+    np.testing.assert_allclose(system.masses[indices], 0.0)
     np.testing.assert_allclose(
-        system.masses[data.parent_indices],
-        initial_masses[data.parent_indices] + initial_masses[data.drude_indices],
+        system.masses[parents],
+        initial_masses[parents] + initial_masses[indices],
     )
     assert sum(system.masses) == pytest.approx(sum(initial_masses))
 
     calculator.calculate()
     previous = plugin.scf.calculator.state
-    system.positions[data.parent_indices] = system.positions.base[data.parent_indices] + 0.01
+    system.positions[parents] = system.positions.base[parents] + 0.01
     assert not np.allclose(plugin.scf.calculator.state, previous)
 
     from scipy.optimize import minimize

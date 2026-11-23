@@ -8,14 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 import openmm
-import openmm.unit
-
-ONE_4PI_EPS0 = (
-    138.93545764438198
-    * openmm.unit.kilojoule_per_mole
-    * openmm.unit.nanometer
-    / openmm.unit.elementary_charge**2
-)
+from .virtual_sites import _extract_drude_sites
 
 
 @dataclass(frozen=True)
@@ -50,41 +43,14 @@ def extract_drude_data(omm_system: openmm.System) -> DrudeData | None:
     Returns:
         Drude oscillator metadata, or None if no DrudeForce is present.
     """
-    drude_forces = [
-        force for force in omm_system.getForces()
-        if isinstance(force, openmm.DrudeForce)
-    ]
-    if not drude_forces:
+    sites = _extract_drude_sites(omm_system)
+    if not sites:
         return None
-    if len(drude_forces) > 1:
-        raise ValueError("Expected one DrudeForce in the OpenMM system.")
-    drude_force = drude_forces[0]
-    drude_indices = []
-    parent_indices = []
-    charges = []
-    polarizabilities = []
-    force_constants = []
-    coulomb_constant = ONE_4PI_EPS0.value_in_unit(
-        openmm.unit.kilojoule_per_mole * openmm.unit.angstrom
-        / openmm.unit.elementary_charge**2,
-    )
-    for i in range(drude_force.getNumParticles()):
-        particle, parent, *_rest, charge, polarizability, _a12, _a34 = (
-            drude_force.getParticleParameters(i)
-        )
-        charge_e = charge / openmm.unit.elementary_charge
-        alpha_a3 = polarizability / openmm.unit.angstrom**3
-        drude_indices.append(int(particle))
-        parent_indices.append(int(parent))
-        charges.append(float(charge_e))
-        polarizabilities.append(float(alpha_a3))
-        force_constants.append(
-            float(coulomb_constant * charge_e**2 / alpha_a3),
-        )
+    charges, polarizabilities, force_constants = np.asarray(
+        [site.parameters for site in sites],
+    ).T
     return DrudeData(
-        drude_indices=np.array(drude_indices, dtype=np.int64),
-        parent_indices=np.array(parent_indices, dtype=np.int64),
-        charges=np.array(charges, dtype=float),
-        polarizabilities=np.array(polarizabilities, dtype=float),
-        force_constants=np.array(force_constants, dtype=float),
+        np.array([site.index for site in sites], dtype=np.int64),
+        np.array([site.parents[0] for site in sites], dtype=np.int64),
+        charges, polarizabilities, force_constants,
     )

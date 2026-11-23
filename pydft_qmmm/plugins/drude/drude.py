@@ -164,9 +164,6 @@ class CalculatorDrudeSCF(CalculatorPlugin):
         elif calculator.calculator_group != "MM":
             raise ValueError("Drude relaxation requires an MM calculator.")
 
-        self.drude_data = calculator.system.drude_data
-        if self.drude_data is None or not len(self.drude_data):
-            raise ValueError("The system must contain Drude particles.")
         external_potential = None
 
         if qm_calculator is not None:
@@ -174,8 +171,11 @@ class CalculatorDrudeSCF(CalculatorPlugin):
             external_potential = CachedForceCalculator(
                 calculator.system, self.qm_force_cache,
             )
+        adapter = DrudeCalculator(self.mm_calculator, external_potential=external_potential)
+        if not len(adapter.indices):
+            raise ValueError("The system must contain Drude particles.")
         self.drude_scf = DrudeSCF(
-            DrudeCalculator(self.mm_calculator, self.drude_data, external_potential),
+            adapter,
             max_iterations=self.max_iterations,
             algorithm=self.algorithm,
             force_tolerance=self.force_tolerance,
@@ -194,8 +194,8 @@ class CalculatorDrudeSCF(CalculatorPlugin):
         # OpenMM assigns part of each parent's mass to its oscillator.
         # With SCF relaxation only the parent is integrated.
         masses = calculator.system.masses.base.copy()
-        indices = self.drude_data.drude_indices
-        np.add.at(masses, self.drude_data.parent_indices, masses[indices])
+        indices = adapter.indices
+        np.add.at(masses, adapter.parent_indices, masses[indices])
         masses[indices] = 0
         calculator.system.masses[:] = masses
         calculator.system.velocities[indices] = 0

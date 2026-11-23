@@ -38,7 +38,6 @@ if TYPE_CHECKING:
     from typing import Any
     from collections.abc import Callable
     from numpy.typing import NDArray
-    from pydft_qmmm.utils.drude_data import DrudeData
 
 
 def _del_attr(self: System, attr: str) -> Callable[[Any], None]:
@@ -125,7 +124,6 @@ class System(Sequence[_SystemAtom]):
             atoms: list[Atom],
             box: NDArray[np.float64] = np.zeros((3, 3)),
     ) -> None:
-        self.drude_data: DrudeData | None = None
         self._virtual_sites = ()
         self._atoms = None
         self._system_atoms = None
@@ -293,7 +291,6 @@ class System(Sequence[_SystemAtom]):
                 self.virtual_parameters, strict=True,
             )
         ])
-        copied.drude_data = deepcopy(self.drude_data)
         return copied
 
     def __deepcopy__(self, memo: dict[int, Any]) -> System:

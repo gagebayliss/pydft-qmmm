@@ -12,7 +12,7 @@ from openmm import unit
 from pydft_qmmm import System
 from pydft_qmmm.interfaces.openmm.openmm_factory import _empty_omm_system
 from pydft_qmmm.system.atom import Atom
-from pydft_qmmm.utils import extract_virtual_sites
+from pydft_qmmm.utils import VirtualSite, extract_virtual_sites
 from pydft_qmmm import VerletIntegrator
 from pydft_qmmm import MMHamiltonian
 from pydft_qmmm import QMHamiltonian
@@ -152,6 +152,26 @@ def test_nonlinear_virtual_sites_against_openmm_reference(degenerate):
         state.getForces(asNumpy=True).value_in_unit(unit.kilojoule_per_mole / unit.angstrom),
         atol=1e-14,
     )
+
+
+def test_geometric_site_with_drude_parent():
+    system = System([Atom() for _ in range(3)])
+    system.build_virtual_sites([
+        VirtualSite(1, "drude", (0,), (-1.0, 1.0, 1389.35)),
+        VirtualSite(2, "two_average", (0, 1), (0.25, 0.75)),
+    ])
+    system.positions[1] = [0.4, 0., 0.]
+    np.testing.assert_allclose(system.positions[:, 0], [0., 0.4, 0.3])
+
+    forces = np.zeros((3, 3))
+    forces[:, 0] = [0., 2., 4.]
+    distributed = system.vsite_helper.distribute_forces(forces)
+    np.testing.assert_allclose(distributed[:, 0], [1., 5., 4.])
+
+    auxiliary = _empty_omm_system(system)
+    assert not auxiliary.isVirtualSite(1)
+    assert auxiliary.isVirtualSite(2)
+    assert auxiliary.getNumForces() == 0
 
 
 def reference_calculate_positions(water_positions):
