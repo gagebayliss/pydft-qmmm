@@ -41,14 +41,12 @@ class DrudeCalculator:
         self.external_potential = external_potential
         self.qm_interface = qm_interface
         self.density_matrix = None
-        self.grid_energy = 0.0
 
     def freeze_density(self) -> None:
-        """Keep the QM density and long-range grid energy for this minimization."""
+        """Keep the QM density for this minimization."""
         qm = self.qm_interface
         if qm is not None:
             self.density_matrix = qm.get_density_matrix()
-            self.grid_energy = qm.compute_grid_embedding_energy(self.density_matrix)
 
     def calculate(
             self,
@@ -70,7 +68,7 @@ class DrudeCalculator:
                 raise RuntimeError("Set the QM density before evaluating Drude forces.")
             system = self.calculator.system
             energy += self.qm_interface.compute_embedding_energy(
-                self.density_matrix, grid_energy=self.grid_energy,
+                self.density_matrix, arbitrary_potential=False,
             )
             embedding = system.select("subsystem II")
             indices = [i for i in self.indices if i in embedding]

@@ -147,33 +147,47 @@ class Psi4Interface(QMInterface):
             self,
             density_matrix: psi4.core.Matrix | None = None,
             *,
-            grid_energy: float | None = None,
+            point_charges: bool = True,
+            diffuse_charges: bool = True,
+            arbitrary_potential: bool = True,
     ) -> float:
-        """Return the total embedding energy in kJ/mol at the current charges.
+        """Return the selected embedding interactions in kJ/mol.
 
-        A supplied density bypasses SCF. A supplied grid energy (kJ/mol)
-        holds the long-range contribution fixed during Drude minimization.
+        With a supplied AO density, use the current embedding geometry
+        without running SCF. PyDFT currently supplies point charges and
+        arbitrary potentials, and leaves the diffuse-charge slot empty.
         """
-        if density_matrix is None:
-            density_matrix = self.get_density_matrix()
-        if grid_energy is None:
-            grid_energy = self.compute_grid_embedding_energy(density_matrix)
-        charges = self._embedding_charges()
-        if not charges:
-            return grid_energy
-        external = psi4.core.ExternalPotential()
-        external.appendCharges(charges)
-        basis = self._generate_basis()
-        energy = density_matrix.vector_dot(external.computePotentialMatrix(basis))
-        energy += external.computeNuclearEnergy(basis.molecule())
-        return energy * KJMOL_PER_EH + grid_energy
-
-    def compute_grid_embedding_energy(self, density_matrix: psi4.core.Matrix) -> float:
-        """Return the electronic interaction with the embedding grid in kJ/mol."""
-        if not self.potentials:
+        if not (point_charges or diffuse_charges or arbitrary_potential):
             return 0.0
-        matrix = self._generate_external_potentials()[2]
-        energy = density_matrix.vector_dot(psi4.core.Matrix.from_array(matrix))
+        external = psi4.core.ExternalPotential()
+        if density_matrix is None:
+            wfn = self._generate_wavefunction()
+            source = wfn.external_pot()
+            if source is None:
+                return 0.0
+            density_matrix = self.get_density_matrix()
+            basis = wfn.basisset()
+            if point_charges:
+                external.appendCharges(source.getCharges())
+            if diffuse_charges:
+                for gaussian_basis, coefficients in source.getGaussians():
+                    external.addGaussian(gaussian_basis, coefficients)
+            if arbitrary_potential:
+                matrix = source.getMatrix()
+                if matrix is not None:
+                    external.setMatrix(matrix)
+        else:
+            charges = self._embedding_charges() if point_charges else []
+            if not charges and not (arbitrary_potential and self.potentials):
+                return 0.0
+            external.appendCharges(charges)
+            if arbitrary_potential and self.potentials:
+                matrix = self._generate_external_potentials()[2]
+                external.setMatrix(psi4.core.Matrix.from_array(matrix))
+            basis = self._generate_basis()
+        potential = external.computePotentialMatrix(basis)
+        energy = density_matrix.vector_dot(potential)
+        energy += external.computeNuclearEnergy(basis.molecule())
         return energy * KJMOL_PER_EH
 
     @system_cache("positions", "charges", "elements", "subsystems", "box")
@@ -419,15 +433,15 @@ class Psi4Potential(Psi4Interface, AtomicPotential):
         components["Nuclear Energy"] = (
             wfn.molecule().nuclear_repulsion_energy() * KJMOL_PER_EH
         )
-        components["Electronic Energy"] = (
-            energy
-            - components["Nuclear Energy"]
-        )
+        components["Electronic Energy"] = energy - components["Nuclear Energy"]
         if (
             "External Interaction Energy" in self.components
             and wfn.external_pot() is not None
         ):
-            embedding = self.compute_embedding_energy()
-            components["External Interaction Energy"] = embedding
-            components["Electronic Energy"] -= embedding
+            components["External Interaction Energy"] = self.compute_embedding_energy()
+            components["Electronic Energy"] = (
+                energy
+                - components["Nuclear Energy"]
+                - components["External Interaction Energy"]
+            )
         return components
