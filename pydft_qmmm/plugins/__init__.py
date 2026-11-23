@@ -10,6 +10,7 @@ from .barostat import *
 from .atom_partition import *
 from .center import *
 from .centroid_partition import *
+from .charge_fitting import *
 from .drude import *
 from .firstatom_partition import *
 from .plumed import *
