@@ -1,12 +1,11 @@
-"""Integrator plugin for Drude relaxation with fixed QM forces."""
+"""Calculator plugin for Drude relaxation with fixed QM forces."""
 from __future__ import annotations
 
-__all__ = ["IntegratorDrudeSCF", "CalculatorDrudeSCF","QMForceCache", "CachedForceCalculator"]
+__all__ = ["CalculatorDrudeSCF", "QMForceCache", "CachedForceCalculator"]
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field
-from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
@@ -15,17 +14,11 @@ from pydft_qmmm.calculators import Calculator
 from pydft_qmmm.calculators import CalculatorPlugin
 from pydft_qmmm.calculators import Results
 from pydft_qmmm.calculators import CompositeCalculator
-from pydft_qmmm.integrators import IntegratorPlugin
 
 from .drude_solver import DrudeCalculator
 from .drude_solver import DrudeSCF
 from .drude_solver import CompositeSCF
 from .drude_solver import SCFAdapter
-
-if TYPE_CHECKING:
-    from pydft_qmmm.integrators import Returns
-    from pydft_qmmm.system import System
-
 
 class QMForceCache(CalculatorPlugin):
     """Keep a copy of the most recent QM forces for Drude relaxation.
@@ -95,23 +88,10 @@ class CachedForceCalculator(Calculator):
             results.components = {self.name: energy}
         return results
 
-class IntegratorDrudeSCF(IntegratorPlugin):
-    def __init__(
-            self,
-            forcefield: list[str] | str,
-            force_tolerance: float = 0.10,
-            algorithm: str = "L-BFGS-B",
-            max_iterations: int = 50,
-            strict: bool = False,
-    ) -> None:
-        raise NotImplementedError()
-
 
 class CalculatorDrudeSCF(CalculatorPlugin):
     """
     Args:
-        forcefield: Optional legacy argument. The MM calculator supplies
-            the system's Drude metadata.
         force_tolerance: Maximum residual force component in kJ/mol/angstrom.
         algorithm: any scipy.optimize algorithm not requiring a Hessian.
         max_iterations: Maximum Drude optimization iterations per step.
@@ -119,7 +99,6 @@ class CalculatorDrudeSCF(CalculatorPlugin):
 
     def __init__(
             self,
-            forcefield: list[str] | str | None = None,
             force_tolerance: float = 0.10,
             algorithm: str = "L-BFGS-B",
             max_iterations: int = 50,

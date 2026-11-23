@@ -1,22 +1,16 @@
-"""Drude relaxation solvers and integrator plugin."""
+"""Drude relaxation solvers and calculator plugin."""
 from __future__ import annotations
 
 __all__ = [
-    "DrudeData",
     "DrudeSCF",
-    "IntegratorDrudeSCF",
     "CalculatorDrudeSCF",
     "QMForceCache",
     "CachedForceCalculator",
     "CompositeSCF",
     "SCFAdapter",
     "DrudeCalculator",
-    "extract_drude_data",
 ]
 
-from .drude_data import DrudeData
-from .drude_data import extract_drude_data
-from .drude import IntegratorDrudeSCF
 from .drude import CalculatorDrudeSCF
 from .drude import QMForceCache
 from .drude import CachedForceCalculator

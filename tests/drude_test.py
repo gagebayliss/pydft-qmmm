@@ -10,10 +10,10 @@ import pytest
 from pydft_qmmm import MMHamiltonian, QMHamiltonian, QMMMHamiltonian, System
 from pydft_qmmm.plugins import (
     CachedForceCalculator, CalculatorDrudeSCF, CompositeSCF, DrudeCalculator, DrudeSCF,
-    IntegratorDrudeSCF, QMForceCache,
-    extract_drude_data,
+    QMForceCache,
 )
-from pydft_qmmm.utils import Subsystem, load_omm_system, virtual_sites
+from pydft_qmmm.system.atom import Atom
+from pydft_qmmm.utils import Subsystem, VirtualSite, extract_virtual_sites
 
 FORCEFIELD = [
     "tests/swm4ndp_data/swm4ndp.xml",
@@ -99,23 +99,27 @@ def test_fixed_force_relaxation(drude_problem, algorithm):
 
 
 def test_drude_metadata_units(drude_dimer):
-    data = extract_drude_data(load_omm_system(drude_dimer, FORCEFIELD))
-    np.testing.assert_array_equal(data.drude_indices, [4, 9])
-    np.testing.assert_array_equal(data.parent_indices, [0, 5])
-    np.testing.assert_allclose(data.polarizabilities, 0.978253)
-    np.testing.assert_allclose(data.force_constants, 4183.874769695973, rtol=1e-12)
-    assert extract_drude_data(openmm.System()) is None
+    MMHamiltonian(
+        forcefield=FORCEFIELD, nonbonded_method="NoCutoff", platform="Reference",
+    ).build_calculator(drude_dimer)
+    mask = drude_dimer.virtual_types.base == "drude"
+    np.testing.assert_array_equal(drude_dimer.virtual_site_indices.base[mask], [4, 9])
+    assert list(drude_dimer.virtual_parents.base[mask]) == [(0,), (5,)]
+    for _, alpha, spring in drude_dimer.virtual_parameters.base[mask]:
+        assert alpha == pytest.approx(0.978253)
+        assert spring == pytest.approx(4183.874769695973, rel=1e-12)
+    assert extract_virtual_sites(openmm.System()) == ()
 
 
 def test_drude_relaxation_with_coordinate_wrapping():
     """Trial displacements remain valid when calculation shifts the system."""
     from pydft_qmmm.calculators import Results
 
-    system = SimpleNamespace(positions=np.array([
-        [10.0, 20.0, 30.0], [10.1, 20.1, 30.1],
-    ]))
-    data = SimpleNamespace(drude_indices=np.array([1]),
-                           parent_indices=np.array([0]))
+    system = System([
+        Atom(position=np.array([10., 20., 30.])),
+        Atom(position=np.array([10.1, 20.1, 30.1])),
+    ])
+    system.build_virtual_sites([VirtualSite(1, "drude", (0,), (-1., 1., 1389.35))])
 
     class WrappedCalculator:
         def __init__(self):
@@ -128,7 +132,7 @@ def test_drude_relaxation_with_coordinate_wrapping():
             forces[1] = -2 * displacement
             return Results(float(np.sum(displacement**2)), forces)
 
-    adapter = DrudeCalculator(WrappedCalculator(), data)
+    adapter = DrudeCalculator(WrappedCalculator())
     np.testing.assert_allclose(adapter.state, 0.1)
     energy, converged = DrudeSCF(adapter, force_tolerance=1e-9).solve()
     assert converged
@@ -191,77 +195,35 @@ def test_full_energy_gradient_before_freezing(drude_problem, step):
     np.testing.assert_allclose(analytical, numerical, atol=2e-3, rtol=0)
 
 
-def test_integrator_reuses_previous_qm_forces(drude_problem, monkeypatch):
-    from pydft_qmmm import VerletIntegrator
-    from pydft_qmmm.calculators import PotentialCalculator
-
-    calculator, adapter = drude_problem
-    system = calculator.system
-    plugin = IntegratorDrudeSCF(
-        calculator, FORCEFIELD, force_tolerance=1e-5, max_iterations=100,
-    )
-    system.forces[:] = calculator.calculate().forces
-    original = system.positions.base.copy()
-    previous_qm_forces = system.forces - adapter.calculator.calculate().forces
-    # A small physical step; virtual sites are rebuilt before relaxation.
-    system.masses[system.virtual_site_indices] = 0.1
-    integrator = VerletIntegrator(0.1)
-    integrator.register_plugin(plugin, 0)
-    original_calculate = PotentialCalculator.calculate
-    qm_calls = 0
-
-    def count_qm_calls(self, *args, **kwargs):
-        nonlocal qm_calls
-        if self.calculator_group == "QM":
-            qm_calls += 1
-            raise AssertionError("Drude relaxation must not evaluate QM.")
-        return original_calculate(self, *args, **kwargs)
-
-    monkeypatch.setattr(PotentialCalculator, "calculate", count_qm_calls)
-    positions, velocities = integrator.integrate(system)
-    assert qm_calls == 0
-    np.testing.assert_array_equal(system.positions, original)
-    if plugin.qm_force_cache is not None:
-        np.testing.assert_allclose(
-            plugin.qm_force_cache.forces, previous_qm_forces, atol=1e-12,
-        )
-        external = plugin.scf.calculator.external_potential
-        assert external.calculate().forces is plugin.qm_force_cache.forces
-    np.testing.assert_array_equal(velocities[adapter.indices], 0)
-    np.testing.assert_allclose(
-        positions, virtual_sites.compute_positions(system, positions),
-    )
-    try:
-        system.positions[:] = positions
-        _, gradient = plugin.scf.calculator.calculate(
-            adapter.state,
-        )
-        assert np.max(np.abs(gradient)) <= 1e-5
-    finally:
-        system.positions[:] = original
+def test_calculator_relaxes_drudes(drude_problem):
+    calculator, _ = drude_problem
+    plugin = CalculatorDrudeSCF(strict=True)
+    calculator.register_plugin(plugin)
+    results = calculator.calculate()
+    assert np.isfinite(results.energy)
+    residual = results.forces[plugin.drude_scf.calculator.indices]
+    assert np.max(np.abs(residual)) <= plugin.force_tolerance
 
 
 @pytest.mark.parametrize("failure", ["exception", "nonconvergence"])
-def test_integrator_restores_positions_on_failure(drude_problem, monkeypatch, failure):
+def test_calculator_retries_after_failure(drude_problem, monkeypatch, failure):
     calculator, _ = drude_problem
-    system = calculator.system
-    plugin = IntegratorDrudeSCF(calculator, FORCEFIELD)
-    system.forces[:] = calculator.calculate().forces
-    original = system.positions.base.copy()
+    plugin = CalculatorDrudeSCF(strict=True)
+    calculator.register_plugin(plugin)
+    attempts = 0
 
-    def fail():
-        system.positions[:] = original + 0.5
-        if failure == "exception":
+    def solve():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1 and failure == "exception":
             raise RuntimeError("backend failure")
-        return 0.0, False
+        return 0.0, attempts > 1
 
-    monkeypatch.setattr(plugin.scf, "solve", fail)
-    integrate = plugin._modify_integrate(
-        lambda system: (original + 0.1, np.zeros_like(original)),
-    )
+    monkeypatch.setattr(plugin.scf, "solve", solve)
     with pytest.raises(RuntimeError):
-        integrate(system)
-    np.testing.assert_array_equal(system.positions, original)
+        calculator.calculate()
+    calculator.calculate()
+    assert attempts == 2
 
 
 def test_cache_observes_forces_without_recalculating(drude_dimer):
@@ -302,8 +264,10 @@ def test_general_external_calculator(drude_dimer):
     from pydft_qmmm.calculators import Results
 
     system = drude_dimer
+    MMHamiltonian(
+        forcefield=FORCEFIELD, nonbonded_method="NoCutoff", platform="Reference",
+    ).build_calculator(system)
     reference = system.positions.base.copy()
-    data = extract_drude_data(load_omm_system(system, FORCEFIELD))
 
     class HarmonicCalculator:
         def __init__(self, center):
@@ -316,7 +280,7 @@ def test_general_external_calculator(drude_dimer):
 
     base = HarmonicCalculator(reference)
     external = HarmonicCalculator(reference + 0.2)
-    adapter = DrudeCalculator(base, data, external_potential=external)
+    adapter = DrudeCalculator(base, external_potential=external)
     initial = adapter.state
     _, analytical = adapter.calculate(initial)
     numerical = np.zeros_like(initial)

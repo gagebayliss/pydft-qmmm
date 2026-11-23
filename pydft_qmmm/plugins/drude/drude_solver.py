@@ -12,7 +12,6 @@ from numpy.typing import NDArray
 if TYPE_CHECKING:
     from scipy.optimize import OptimizeResult
     from pydft_qmmm.calculators import Calculator
-    from .drude_data import DrudeData
 
 
 class DrudeCalculator:
@@ -20,29 +19,22 @@ class DrudeCalculator:
 
     Args:
         calculator: Calculator for the base energy and forces.
-        drude_data: Optional explicit indices for legacy callers. Defaults to
-            the Drude sites defined on the system.
         external_potential: Optional calculator for QM forces, etc. 
     """
 
     def __init__(
             self,
             calculator: Calculator,
-            drude_data: DrudeData | None = None,
             external_potential: Calculator | None = None,
     ) -> None:
         self.calculator = calculator
-        if drude_data is None:
-            system = calculator.system
-            mask = system.virtual_types.base == "drude"
-            self.indices = system.virtual_site_indices.base[mask]
-            self.parent_indices = np.array(
-                [parent for (parent,) in system.virtual_parents.base[mask]],
-                dtype=np.int64,
-            )
-        else:
-            self.indices = drude_data.drude_indices.copy()
-            self.parent_indices = drude_data.parent_indices.copy()
+        system = calculator.system
+        mask = system.virtual_types.base == "drude"
+        self.indices = system.virtual_site_indices.base[mask]
+        self.parent_indices = np.array(
+            [parent for (parent,) in system.virtual_parents.base[mask]],
+            dtype=np.int64,
+        )
         self.external_potential = external_potential
 
     def calculate(

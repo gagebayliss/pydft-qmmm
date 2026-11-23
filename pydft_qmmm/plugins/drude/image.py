@@ -12,12 +12,12 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from .drude_data import DrudeData
 
 class DrudeCalculator:
-    def __init__(self,calculator,drude_data):
+    def __init__(self, calculator):
         self.calculator = calculator
-        self.indices = drude_data.drude_indices
+        system = calculator.system
+        self.indices = system.virtual_site_indices.base[system.virtual_types.base == "drude"]
         self._gradient = None
     
     def calculate(
