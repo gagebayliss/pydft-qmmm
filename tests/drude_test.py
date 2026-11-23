@@ -225,46 +225,36 @@ def test_embedding_at_fixed_density(drude_problem, monkeypatch):
 
 
 @pytest.mark.parametrize("drude_problem", [True], indirect=True)
-def test_embedding_components(drude_problem, monkeypatch):
-    import psi4
-
+def test_embedding_components(drude_problem):
     _, adapter = drude_problem
     qm = adapter.qm_interface
     wfn = qm._generate_wavefunction()
     density = adapter.density_matrix
     external = wfn.external_pot()
-    point_energy = qm.compute_embedding_energy(density)
-    matrix = psi4.core.Matrix.from_array(np.eye(wfn.basisset().nbf()))
-    external.setMatrix(matrix)
-    matrix_energy = density.vector_dot(matrix) * KJMOL_PER_EH
-    gaussian_molecule = psi4.geometry("He 4 0 0\nno_reorient\nno_com")
-    gaussian_basis = psi4.core.BasisSet.build(gaussian_molecule, "BASIS", "sto-3g")
-    external.addGaussian(gaussian_basis, psi4.core.Vector.from_array(np.array([0.2])))
-
-    full = density.vector_dot(external.computePotentialMatrix(wfn.basisset()))
-    full += external.computeNuclearEnergy(wfn.molecule())
-    full *= KJMOL_PER_EH
-    assert qm.compute_embedding_energy() == pytest.approx(full)
-    assert qm.compute_embedding_energy(diffuse_charges=False) == pytest.approx(
-        point_energy + matrix_energy,
-    )
-    assert qm.compute_embedding_energy(point_charges=False) == pytest.approx(full - point_energy)
-    assert qm.compute_embedding_energy(arbitrary_potential=False) == pytest.approx(full - matrix_energy)
+    point_energy = density.vector_dot(external.computePotentialMatrix(wfn.basisset()))
+    point_energy += external.computeNuclearEnergy(wfn.molecule())
+    point_energy *= KJMOL_PER_EH
 
     components = qm.compute_components()
     electronic = qm.compute_energy() - components["Nuclear Energy"]
     assert components["Electronic Energy"] == pytest.approx(electronic)
     qm.return_external_ixn_component()
     components = qm.compute_components()
-    assert components["External Interaction Energy"] == pytest.approx(full)
-    assert components["Electronic Energy"] == pytest.approx(electronic - full)
+    assert components["External Interaction Energy"] == pytest.approx(point_energy)
+    assert components["Electronic Energy"] == pytest.approx(electronic - point_energy)
 
-    qm.potentials.append(object())
-    monkeypatch.setattr(
-        type(qm), "_generate_external_potentials", lambda self: [None, None, matrix.np],
-    )
-    assert qm.compute_embedding_energy(density, point_charges=False) == pytest.approx(matrix_energy)
-    assert qm.compute_embedding_energy(density, arbitrary_potential=False) == pytest.approx(point_energy)
+    class ConstantPotential:
+        def compute_potential(self, coordinates):
+            return np.full(len(coordinates), 0.01)
+
+    qm.add_electronic_potential(ConstantPotential())
+    # Take a Drude trial step with the same density and the new grid potential.
+    qm.system.positions[adapter.indices[-1], 0] += 0.02
+    point_energy = qm.compute_embedding_energy(density, arbitrary_potential=False)
+    # A constant one-electron potential contributes once per electron.
+    grid_energy = 0.01 * (wfn.nalpha() + wfn.nbeta()) * KJMOL_PER_EH
+    assert qm.compute_embedding_energy(density, point_charges=False) == pytest.approx(grid_energy)
+    assert qm.compute_embedding_energy(density) == pytest.approx(point_energy + grid_energy)
 
 
 def test_calculator_relaxes_drudes(drude_problem, monkeypatch):
