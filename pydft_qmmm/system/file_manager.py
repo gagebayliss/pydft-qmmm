@@ -9,6 +9,7 @@ __all__ = [
 
 import pathlib
 from typing import TYPE_CHECKING
+import warnings
 
 import numpy as np
 
@@ -72,7 +73,7 @@ def _read_pdb(
     # Read the PDB file.
     with open(pdb_file) as fh:
         lines = fh.readlines()
-    for line in lines:
+    for line_index, line in enumerate(lines):
         # Extract lattice information and construct box.
         if line.startswith("CRYST1"):
             a = float(line[6:15].strip())
@@ -106,6 +107,9 @@ def _read_pdb(
                 ],
             )
             element = line[76:78].strip().lower().capitalize()
+            if element == "":
+                element = "Ep"
+                warnings.Warn(f"No element found for line {line_index}. Assuming virtual site.\n")
             mass = ELEMENT_TO_MASS.get(element, 0.)
             atom = Atom(
                 position=position,
