@@ -113,6 +113,69 @@ class Psi4Interface(QMInterface):
         if "External Interaction Energy" not in self.components:
             self.components.append("External Interaction Energy")
 
+    def get_density_matrix(self) -> psi4.core.Matrix:
+        """Return the spin-summed AO density from the current SCF."""
+        wfn = self._generate_wavefunction()
+        density = wfn.Da().clone()
+        density.add(wfn.Db())
+        return density
+
+    def compute_electric_field(
+            self,
+            points: NDArray[np.float64],
+            density_matrix: psi4.core.Matrix | None = None,
+    ) -> NDArray[np.float64]:
+        """Return the QM field at points in angstrom, in kJ/mol/angstrom/e."""
+        if density_matrix is None:
+            density_matrix = self.get_density_matrix()
+        points = np.asarray(points) * BOHR_PER_ANGSTROM
+        if len(points) == 0:
+            return np.empty((0, 3))
+        basis = self._generate_basis()
+        mints = psi4.core.MintsHelper(basis)
+        field = mints.electric_field_value(
+            psi4.core.Matrix.from_array(points), density_matrix,
+        ).np
+        molecule = basis.molecule()
+        for atom, position in enumerate(molecule.geometry().np):
+            displacement = points - position
+            distance = np.linalg.norm(displacement, axis=1, keepdims=True)
+            field += molecule.Z(atom) * displacement / distance**3
+        return field * KJMOL_PER_EH * BOHR_PER_ANGSTROM
+
+    def compute_embedding_energy(
+            self,
+            density_matrix: psi4.core.Matrix | None = None,
+            *,
+            grid_energy: float | None = None,
+    ) -> float:
+        """Return the total embedding energy in kJ/mol at the current charges.
+
+        A supplied density bypasses SCF. A supplied grid energy (kJ/mol)
+        holds the long-range contribution fixed during Drude minimization.
+        """
+        if density_matrix is None:
+            density_matrix = self.get_density_matrix()
+        if grid_energy is None:
+            grid_energy = self.compute_grid_embedding_energy(density_matrix)
+        charges = self._embedding_charges()
+        if not charges:
+            return grid_energy
+        external = psi4.core.ExternalPotential()
+        external.appendCharges(charges)
+        basis = self._generate_basis()
+        energy = density_matrix.vector_dot(external.computePotentialMatrix(basis))
+        energy += external.computeNuclearEnergy(basis.molecule())
+        return energy * KJMOL_PER_EH + grid_energy
+
+    def compute_grid_embedding_energy(self, density_matrix: psi4.core.Matrix) -> float:
+        """Return the electronic interaction with the embedding grid in kJ/mol."""
+        if not self.potentials:
+            return 0.0
+        matrix = self._generate_external_potentials()[2]
+        energy = density_matrix.vector_dot(psi4.core.Matrix.from_array(matrix))
+        return energy * KJMOL_PER_EH
+
     @system_cache("positions", "charges", "elements", "subsystems", "box")
     def _generate_wavefunction(self) -> psi4.core.Wavefunction:
         """Generate the Psi4 Wavefunction object.
@@ -179,49 +242,34 @@ class Psi4Interface(QMInterface):
             (:math:`e`) that will be electrostatically embedded by Psi4
             during calculations.
         """
-        embedding = sorted(self.system.select("subsystem II"))
-        external_potentials: list[Any] = []
-        point_charges = []
-        for i in embedding:
-            point_charges.append(
-                [
-                    self.system.charges[i],
-                    self.system.positions[i, 0] * BOHR_PER_ANGSTROM,
-                    self.system.positions[i, 1] * BOHR_PER_ANGSTROM,
-                    self.system.positions[i, 2] * BOHR_PER_ANGSTROM,
-                ],
-            )
-        if embedding:
-            external_potentials.append(np.array(point_charges))
-        else:
-            external_potentials.append(None)
-        # PyDFT-QMMM does not currently support diffuse embedding.
-        external_potentials.append(None)
+        charges = self._embedding_charges()
+        matrix = None
         if self.potentials:
             numint = self._generate_numinthelper()
-            v_grid = self._generate_potential()
-            potential = numint.potential_integral(v_grid).np
-            external_potentials.append(potential)
-        else:
-            external_potentials.append(None)
-        if external_potentials is [None, None, None]:
-            return None
-        return external_potentials
+            matrix = numint.potential_integral(self._generate_potential()).np
+        # The second slot is reserved for diffuse embedding.
+        return [np.array(charges) if charges else None, None, matrix]
+
+    def _embedding_charges(self) -> list[list[float]]:
+        """Return subsystem II charges and their current coordinates in bohr."""
+        charges = []
+        for i in sorted(self.system.select("subsystem II")):
+            x, y, z = self.system.positions[i] * BOHR_PER_ANGSTROM
+            charges.append([self.system.charges[i], x, y, z])
+        return charges
+
+    @system_cache("positions", "elements", "subsystems")
+    def _generate_basis(self) -> psi4.core.BasisSet:
+        """Build the AO basis at the current QM geometry."""
+        return psi4.core.BasisSet.build(
+            self._generate_molecule(), "BASIS", psi4.core.get_global_option("BASIS"),
+        )
 
     @system_cache("positions", "elements", "subsystems")
     def _generate_numinthelper(self) -> psi4.core.NumIntHelper:
-        """Generate the Psi4 NumIntHelper object.
-
-        Returns:
-            The Psi4 NumIntHelper object, which can evaluate integrals
-            for arbitrary potentials via numerical quadrature.
-        """
-        molecule = self._generate_molecule()
-        basis_set = psi4.core.BasisSet.build(
-            molecule,
-            "BASIS",
-            psi4.core.get_global_option("BASIS"),
-        )
+        """Build the integration grid at the current QM geometry."""
+        basis_set = self._generate_basis()
+        molecule = basis_set.molecule()
         grid = psi4.core.DFTGrid.build(molecule, basis_set)
         numinthelper = psi4.core.NumIntHelper(grid)
         return numinthelper
@@ -337,8 +385,7 @@ class Psi4Potential(Psi4Interface, AtomicPotential):
                             "currently installed).",
                         ),
                     )
-                D = wfn.Da().clone()
-                D.add(wfn.Db())
+                D = self.get_density_matrix()
                 grads = wfn.external_pot().computePotentialGradients(
                     wfn.basisset(),
                     D,
@@ -351,8 +398,7 @@ class Psi4Potential(Psi4Interface, AtomicPotential):
         if self._generate_external_potentials()[2] is not None:
             numint = self._generate_numinthelper()
             v_grid = self._generate_potential()
-            D = wfn.Da().clone()
-            D.add(wfn.Db())
+            D = self.get_density_matrix()
             grads = numint.potential_gradient(v_grid, D)
             forces = grads.np * -KJMOL_PER_EH * BOHR_PER_ANGSTROM
             forces_temp[qm_indices, :] += forces
@@ -369,7 +415,7 @@ class Psi4Potential(Psi4Interface, AtomicPotential):
         """
         components: dict[str, float] = {}
         wfn = self._generate_wavefunction()
-        energy = self._generate_wavefunction().energy() * KJMOL_PER_EH
+        energy = wfn.energy() * KJMOL_PER_EH
         components["Nuclear Energy"] = (
             wfn.molecule().nuclear_repulsion_energy() * KJMOL_PER_EH
         )
@@ -379,18 +425,9 @@ class Psi4Potential(Psi4Interface, AtomicPotential):
         )
         if (
             "External Interaction Energy" in self.components
-            and (extern := wfn.external_pot()) is not None
+            and wfn.external_pot() is not None
         ):
-            D = wfn.Da().clone()
-            D.add(wfn.Db())
-            V_extern = extern.computePotentialMatrix(wfn.basisset())
-            components["External Interaction Energy"] = (
-                psi4.core.doublet(D, V_extern).trace()
-                + extern.computeNuclearEnergy(wfn.molecule())
-            ) * KJMOL_PER_EH
-            components["Electronic Energy"] = (
-                energy
-                - components["Nuclear Energy"]
-                - components["External Interaction Energy"]
-            )
+            embedding = self.compute_embedding_energy()
+            components["External Interaction Energy"] = embedding
+            components["Electronic Energy"] -= embedding
         return components

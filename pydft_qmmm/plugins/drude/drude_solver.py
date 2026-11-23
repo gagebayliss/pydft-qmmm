@@ -10,6 +10,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 if TYPE_CHECKING:
+    from pydft_qmmm.interfaces.psi4.psi4_interface import Psi4Interface
     from scipy.optimize import OptimizeResult
     from pydft_qmmm.calculators import Calculator
 
@@ -19,13 +20,15 @@ class DrudeCalculator:
 
     Args:
         calculator: Calculator for the base energy and forces.
-        external_potential: Optional calculator for QM forces, etc. 
+        external_potential: Optional additional energy and forces.
+        qm_interface: Psi4 interface for frozen-density embedding.
     """
 
     def __init__(
             self,
             calculator: Calculator,
             external_potential: Calculator | None = None,
+            qm_interface: Psi4Interface | None = None,
     ) -> None:
         self.calculator = calculator
         system = calculator.system
@@ -36,6 +39,16 @@ class DrudeCalculator:
             dtype=np.int64,
         )
         self.external_potential = external_potential
+        self.qm_interface = qm_interface
+        self.density_matrix = None
+        self.grid_energy = 0.0
+
+    def freeze_density(self) -> None:
+        """Keep the QM density and long-range grid energy for this minimization."""
+        qm = self.qm_interface
+        if qm is not None:
+            self.density_matrix = qm.get_density_matrix()
+            self.grid_energy = qm.compute_grid_embedding_energy(self.density_matrix)
 
     def calculate(
             self,
@@ -45,14 +58,28 @@ class DrudeCalculator:
         self.state = positions
         results = self.calculator.calculate(return_components=False)
         energy = results.energy
-        gradient = -results.forces[self.indices].reshape(-1)
+        forces = results.forces.copy()
         if self.external_potential is not None:
             external = self.external_potential.calculate(
                 return_components=False,
             )
             energy += external.energy
-            gradient -= external.forces[self.indices].reshape(-1)
-        return energy, gradient
+            forces += external.forces
+        if self.qm_interface is not None:
+            if self.density_matrix is None:
+                raise RuntimeError("Set the QM density before evaluating Drude forces.")
+            system = self.calculator.system
+            energy += self.qm_interface.compute_embedding_energy(
+                self.density_matrix, grid_energy=self.grid_energy,
+            )
+            embedding = system.select("subsystem II")
+            indices = [i for i in self.indices if i in embedding]
+            field = self.qm_interface.compute_electric_field(
+                system.positions[indices], self.density_matrix,
+            )
+            for i, electric_field in zip(indices, field):
+                forces[i] += system.charges[i] * electric_field
+        return energy, -forces[self.indices].reshape(-1)
 
     @property
     def state(self) -> NDArray[np.float64]:
@@ -109,6 +136,7 @@ class DrudeSCF:
 
     def solve(self) -> tuple[float, bool]:
         from scipy.optimize import minimize
+        self.calculator.freeze_density()
         if not len(self.calculator.indices):
             energy, _ = self.calculator.calculate(self.calculator.state)
             return energy, True
@@ -166,7 +194,7 @@ class SCFAdapter:
         self.result = None
 
     def solve(self) -> tuple[float, bool]:
-        result = self.calculator.calculate()
+        result = self.calculator.calculate(return_forces=False, return_components=False)
         return result.energy, bool(np.isfinite(result.energy))
 
 
