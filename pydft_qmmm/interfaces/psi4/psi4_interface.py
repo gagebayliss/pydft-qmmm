@@ -151,40 +151,36 @@ class Psi4Interface(QMInterface):
             diffuse_charges: bool = True,
             arbitrary_potential: bool = True,
     ) -> float:
-        """Return the selected embedding interactions in kJ/mol.
-
-        With a supplied AO density, use the current embedding geometry
-        without running SCF. PyDFT currently supplies point charges and
-        arbitrary potentials, and leaves the diffuse-charge slot empty.
+        """Compute the selected embedding interactions in kJ/mol.
         """
         if not (point_charges or diffuse_charges or arbitrary_potential):
             return 0.0
-        external = psi4.core.ExternalPotential()
+
         if density_matrix is None:
             wfn = self._generate_wavefunction()
-            source = wfn.external_pot()
-            if source is None:
-                return 0.0
             density_matrix = self.get_density_matrix()
             basis = wfn.basisset()
-            if point_charges:
-                external.appendCharges(source.getCharges())
-            if diffuse_charges:
-                for gaussian_basis, coefficients in source.getGaussians():
-                    external.addGaussian(gaussian_basis, coefficients)
-            if arbitrary_potential:
-                matrix = source.getMatrix()
-                if matrix is not None:
-                    external.setMatrix(matrix)
-        else:
-            charges = self._embedding_charges() if point_charges else []
-            if not charges and not (arbitrary_potential and self.potentials):
-                return 0.0
-            external.appendCharges(charges)
-            if arbitrary_potential and self.potentials:
-                matrix = self._generate_external_potentials()[2]
-                external.setMatrix(psi4.core.Matrix.from_array(matrix))
-            basis = self._generate_basis()
+
+        external = psi4.core.ExternalPotential()
+
+        # point charges
+        charges = self._embedding_charges() if point_charges else []
+        if not charges and not (arbitrary_potential and self.potentials):
+            return 0.0
+        external.appendCharges(charges)
+
+        # diffuse charges
+        #TODO: add diffuse code here when we support this
+        if diffuse_charges:
+            pass
+
+        # arbitrary potential
+        if arbitrary_potential and self.potentials:
+            matrix = self._generate_external_potentials()[2]
+            external.setMatrix(psi4.core.Matrix.from_array(matrix))
+        
+        # evaluate
+        basis = self._generate_basis()
         potential = external.computePotentialMatrix(basis)
         energy = density_matrix.vector_dot(potential)
         energy += external.computeNuclearEnergy(basis.molecule())
@@ -439,9 +435,5 @@ class Psi4Potential(Psi4Interface, AtomicPotential):
             and wfn.external_pot() is not None
         ):
             components["External Interaction Energy"] = self.compute_embedding_energy()
-            components["Electronic Energy"] = (
-                energy
-                - components["Nuclear Energy"]
-                - components["External Interaction Energy"]
-            )
+            components["Electronic Energy"] -= components["External Interaction Energy"]
         return components
